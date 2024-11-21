@@ -1,0 +1,22 @@
+[package]
+name = "luffy"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.93"
+aws-config = "1.5.10"
+aws-sdk-dynamodb = "1.54.0"
+aws-sdk-lambda = "1.56.0"
+aws-sdk-secretsmanager = "1.53.0"
+axum = "0.7.9"
+dirs = "5.0.1"
+dotenv = "0.15.0"
+mac_address = "1.1.7"
+rumqttc = "0.24.0"
+rustls-pemfile = "2.2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.133"
+tokio = { version = "1.41.1", features = ["full"] }
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
