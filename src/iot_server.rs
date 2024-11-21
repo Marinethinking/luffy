@@ -29,16 +29,32 @@ impl IotServer {
         }
     }
 
-    pub async fn start(&self) -> Result<()> {
+    pub async fn start(&mut self) -> Result<()> {
+        info!("Starting IoT server...");
         // Connect to MQTT
         let mqtt_client = self.connect_mqtt().await?;
+        self.mqtt_client = Some(mqtt_client.clone());
 
         // Subscribe to command topics
         mqtt_client
-            .subscribe("vehicle/command/#", QoS::AtLeastOnce)
+            .subscribe(
+                &format!("{}/command/#", self.vehicle.device_id),
+                QoS::AtLeastOnce,
+            )
             .await?;
 
         self.running.store(true, Ordering::SeqCst);
+
+        // Create telemetry interval
+        let mut interval = tokio::time::interval(Duration::from_secs(4));
+
+        // Run the telemetry loop
+        while self.running.load(Ordering::SeqCst) {
+            interval.tick().await;
+            if let Err(e) = self.publish_telemetry().await {
+                error!("Failed to publish telemetry: {}", e);
+            }
+        }
 
         Ok(())
     }
@@ -48,11 +64,11 @@ impl IotServer {
         info!("Received message on {}: {}", topic, payload_str);
 
         match topic {
-            "vehicle/command/mode" => {
+            t if t == format!("{}/command/mode", self.vehicle.device_id) => {
                 let mode: String = serde_json::from_str(&payload_str)?;
                 self.vehicle.update_flight_mode(mode)?;
             }
-            "vehicle/command/arm" => {
+            t if t == format!("{}/command/arm", self.vehicle.device_id) => {
                 let should_arm: bool = serde_json::from_str(&payload_str)?;
                 if should_arm {
                     // self.vehicle.arm()?;
@@ -88,10 +104,14 @@ impl IotServer {
         let aws_iot_port = env::var("AWS_IOT_PORT")?.parse::<u16>()?;
         let mut mqtt_options = rumqttc::MqttOptions::new(device_id, aws_iot_endpoint, aws_iot_port);
 
+        mqtt_options
+            .set_keep_alive(Duration::from_secs(30))
+            .set_clean_session(true);
+
         // Use the Simple TLS configuration
         let transport = rumqttc::Transport::Tls(rumqttc::TlsConfiguration::Simple {
             ca: aws_root_cert.to_vec(),
-            alpn: None,
+            alpn: Some(vec!["mqtt".as_bytes().to_vec()]),
             client_auth: Some((cert_pem, key_pem)),
         });
 
@@ -102,6 +122,10 @@ impl IotServer {
         tokio::spawn(async move {
             loop {
                 match eventloop.poll().await {
+                    Ok(rumqttc::Event::Incoming(rumqttc::Packet::Publish(p))) => {
+                        info!("Received message on topic {}: {:?}", p.topic, p.payload);
+                        // handle_message(&p.topic, &p.payload);
+                    }
                     Ok(event) => {
                         info!("MQTT Event: {:?}", event);
                     }
@@ -122,7 +146,7 @@ impl IotServer {
         if let Some(client) = &self.mqtt_client {
             client
                 .publish(
-                    "vehicle/telemetry",
+                    &format!("{}/telemetry", self.vehicle.device_id),
                     rumqttc::QoS::AtLeastOnce,
                     false,
                     payload,

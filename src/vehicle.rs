@@ -45,7 +45,9 @@ impl Default for VehicleState {
     }
 }
 
+#[derive(Debug)]
 pub struct Vehicle {
+    pub device_id: String,
     state: Arc<RwLock<VehicleState>>,
 }
 
@@ -54,6 +56,7 @@ impl Vehicle {
         VEHICLE
             .get_or_init(|| async {
                 Self {
+                    device_id: util::get_device_mac(),
                     state: Arc::new(RwLock::new(VehicleState::default())),
                 }
             })
@@ -100,7 +103,7 @@ impl Vehicle {
         Ok(())
     }
 
-    fn is_registered(&self) -> bool {
+    pub fn is_registered(&self) -> bool {
         let config_dir = dirs::config_dir()
             .context("Failed to get config directory")
             .unwrap()

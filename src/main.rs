@@ -1,16 +1,14 @@
 use anyhow::Result;
 use dotenv::dotenv;
 use luffy::iot_server::IotServer;
-use luffy::vehicle;
+use luffy::mav_server::MavlinkServer;
+use luffy::web_server::WebServer;
 use tokio::signal;
 use tokio::sync::broadcast;
 use tracing::{error, info, Level};
-use tracing_subscriber::{EnvFilter, FmtSubscriber};
-
-// Assuming you have these modules
-use luffy::aws_client::AwsClient;
-use luffy::mav_server::MavlinkServer;
-use luffy::web_server::WebServer;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -31,6 +29,7 @@ async fn main() -> Result<()> {
     let mav_handle = spawn_mavlink_server(mav_server, shutdown_tx.subscribe());
     let iot_handle = spawn_iot_server(iot_server, shutdown_tx.subscribe());
     let web_handle = spawn_web_server(web_server, shutdown_tx.subscribe());
+    let _ = tokio::join!(mav_handle, iot_handle, web_handle);
 
     // Wait for shutdown signal
     match signal::ctrl_c().await {
@@ -45,8 +44,6 @@ async fn main() -> Result<()> {
         }
     }
 
-    // Wait for all services to shutdown
-    let _ = tokio::join!(mav_handle, iot_handle, web_handle);
     info!("All services stopped, shutting down");
 
     Ok(())
@@ -72,8 +69,12 @@ async fn spawn_mavlink_server(
     Ok(())
 }
 
-async fn spawn_iot_server(server: IotServer, mut shutdown: broadcast::Receiver<()>) -> Result<()> {
-    tokio::spawn(async move {
+async fn spawn_iot_server(
+    mut server: IotServer,
+    mut shutdown: broadcast::Receiver<()>,
+) -> Result<()> {
+    let handle = tokio::spawn(async move {
+        info!("About to start IoT server in select! macro...");
         tokio::select! {
             result = server.start() => {
                 if let Err(e) = result {
@@ -86,6 +87,7 @@ async fn spawn_iot_server(server: IotServer, mut shutdown: broadcast::Receiver<(
             }
         }
     });
+    handle.await?;
     Ok(())
 }
 
@@ -107,13 +109,22 @@ async fn spawn_web_server(server: WebServer, mut shutdown: broadcast::Receiver<(
 }
 
 fn setup_logging() {
-    // Initialize with custom configuration
-    FmtSubscriber::builder()
-        .with_env_filter(EnvFilter::from_default_env().add_directive(Level::DEBUG.into()))
-        // Add file and line numbers
-        .with_file(true)
-        .with_line_number(true)
-        // Pretty printing
-        .pretty()
-        .init();
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_thread_ids(true) // Show thread IDs
+                .with_thread_names(true) // Show thread names
+                .with_target(true) // Show module path
+                .with_file(true) // Show file name
+                .with_line_number(true) // Show line numbers
+                .pretty(),
+        ) // Pretty printing
+        .with(
+            EnvFilter::from_default_env()
+                .add_directive(Level::DEBUG.into())
+                .add_directive("tokio=debug".parse().unwrap()) // Tokio runtime logs
+                .add_directive("runtime=debug".parse().unwrap()),
+        ) // Runtime events
+        .try_init()
+        .expect("Failed to initialize logging");
 }

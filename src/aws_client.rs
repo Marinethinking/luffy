@@ -21,8 +21,6 @@ use tokio::sync::Mutex;
 static AWS_CLIENT: OnceCell<AwsClient> = OnceCell::const_new();
 
 pub struct AwsClient {
-    vehicle: &'static Vehicle,
-    mqtt_client: Arc<Mutex<Option<rumqttc::AsyncClient>>>,
     lambda_client: LambdaClient,
 }
 
@@ -59,8 +57,6 @@ impl AwsClient {
                     .unwrap();
 
                 AwsClient {
-                    vehicle: Vehicle::instance().await,
-                    mqtt_client: Arc::new(Mutex::new(None)),
                     lambda_client: LambdaClient::new(&config),
                 }
             })
@@ -130,6 +126,4 @@ impl AwsClient {
 
         Ok(())
     }
-
-    
 }
