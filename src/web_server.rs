@@ -13,7 +13,7 @@ use tokio::sync::OnceCell;
 
 use crate::vehicle::{Vehicle, VehicleState};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 pub struct WebServer {
     vehicle: &'static Vehicle,
@@ -41,8 +41,12 @@ impl WebServer {
 
         self.running.store(true, Ordering::SeqCst);
 
-        let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-        axum::serve(listener, app).await.unwrap();
+        let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
+            .await
+            .context("Failed to bind to port 3000")?;
+        axum::serve(listener, app)
+            .await
+            .context("Failed to serve")?;
         Ok(())
     }
 

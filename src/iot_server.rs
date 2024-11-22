@@ -7,7 +7,7 @@ use rumqttc::QoS;
 use serde_json::Value;
 use tokio::fs;
 use tokio::time::{self, Duration};
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use crate::aws_client::AwsClient;
 use crate::util;
@@ -41,7 +41,13 @@ impl IotServer {
                 &format!("{}/command/#", self.vehicle.device_id),
                 QoS::AtLeastOnce,
             )
-            .await?;
+            .await
+            .context("Failed to subscribe")?;
+
+        info!(
+            "Successfully subscribed to {}/command/#",
+            self.vehicle.device_id
+        );
 
         self.running.store(true, Ordering::SeqCst);
 
@@ -59,16 +65,16 @@ impl IotServer {
         Ok(())
     }
 
-    async fn handle_message(&self, topic: &str, payload: &[u8]) -> Result<()> {
+    async fn handle_message(vehicle: &Vehicle, topic: &str, payload: &[u8]) -> Result<()> {
         let payload_str = String::from_utf8_lossy(payload);
         info!("Received message on {}: {}", topic, payload_str);
 
         match topic {
-            t if t == format!("{}/command/mode", self.vehicle.device_id) => {
+            t if t == format!("{}/command/mode", vehicle.device_id) => {
                 let mode: String = serde_json::from_str(&payload_str)?;
-                self.vehicle.update_flight_mode(mode)?;
+                vehicle.update_flight_mode(mode)?;
             }
-            t if t == format!("{}/command/arm", self.vehicle.device_id) => {
+            t if t == format!("{}/command/arm", vehicle.device_id) => {
                 let should_arm: bool = serde_json::from_str(&payload_str)?;
                 if should_arm {
                     // self.vehicle.arm()?;
@@ -118,19 +124,23 @@ impl IotServer {
         mqtt_options.set_transport(transport);
         let (client, mut eventloop) = rumqttc::AsyncClient::new(mqtt_options, 10);
 
+        let vehicle = self.vehicle;
         // Spawn event loop handler
         tokio::spawn(async move {
             loop {
                 match eventloop.poll().await {
                     Ok(rumqttc::Event::Incoming(rumqttc::Packet::Publish(p))) => {
                         info!("Received message on topic {}: {:?}", p.topic, p.payload);
-                        // handle_message(&p.topic, &p.payload);
+                        if let Err(e) = Self::handle_message(vehicle, &p.topic, &p.payload).await {
+                            error!("Failed to handle message: {}", e);
+                        }
                     }
                     Ok(event) => {
                         info!("MQTT Event: {:?}", event);
                     }
                     Err(e) => {
                         error!("MQTT Error: {:?}", e);
+                        tokio::time::sleep(Duration::from_secs(1)).await;
                     }
                 }
             }

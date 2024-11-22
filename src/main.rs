@@ -121,7 +121,7 @@ fn setup_logging() {
         ) // Pretty printing
         .with(
             EnvFilter::from_default_env()
-                .add_directive(Level::DEBUG.into())
+                .add_directive(Level::INFO.into())
                 .add_directive("tokio=debug".parse().unwrap()) // Tokio runtime logs
                 .add_directive("runtime=debug".parse().unwrap()),
         ) // Runtime events
