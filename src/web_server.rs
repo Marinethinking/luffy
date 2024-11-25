@@ -6,12 +6,10 @@ use std::{
     time::Duration,
 };
 
-use axum::{http::StatusCode, routing::get, Json, Router};
+use axum::{routing::get, Json, Router};
 
-use serde_json::Value;
-use tokio::sync::OnceCell;
 
-use crate::vehicle::{Vehicle, VehicleState};
+use crate::vehicle::Vehicle;
 
 use anyhow::{Context, Result};
 

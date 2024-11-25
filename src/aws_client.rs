@@ -1,22 +1,16 @@
 use anyhow::{Context, Result};
 use aws_config::{meta::region::RegionProviderChain, BehaviorVersion, Region};
 use aws_sdk_lambda::{config::Credentials, primitives::Blob, Client as LambdaClient};
-use mac_address::get_mac_address;
 
+use crate::config::CONFIG;
 use crate::util;
-use crate::vehicle::Vehicle;
-use rumqttc::Client as MqttClient;
 
-use serde::{Deserialize, Serialize};
-use std::env;
+use serde::Deserialize;
+
 use std::fs;
-use tracing::error;
 
 use tokio::sync::OnceCell;
 use tracing::info;
-
-use std::sync::{Arc, RwLock};
-use tokio::sync::Mutex;
 
 static AWS_CLIENT: OnceCell<AwsClient> = OnceCell::const_new();
 
@@ -26,23 +20,21 @@ pub struct AwsClient {
 
 #[derive(Debug, Deserialize)]
 pub struct IotCredentials {
-    certificateArn: String,
-    certificatePem: String,
-    privateKey: String,
+    #[serde(rename = "certificateArn")]
+    certificate_arn: String,
+    #[serde(rename = "certificatePem")]
+    certificate_pem: String,
+    #[serde(rename = "privateKey")]
+    private_key: String,
 }
 
 impl AwsClient {
     pub async fn get_aws_config() -> Result<aws_config::SdkConfig> {
-        let region = env::var("AWS_REGION").unwrap_or_else(|_| "ca-central-1".into());
-        let access_key = env::var("AWS_ACCESS_KEY_ID").context("AWS_ACCESS_KEY_ID not found")?;
-        let secret_key =
-            env::var("AWS_SECRET_ACCESS_KEY").context("AWS_SECRET_ACCESS_KEY not found")?;
-
-        let credentials = Credentials::new(&access_key, &secret_key, None, None, "default");
+        let region = &CONFIG.aws.region;
 
         let config = aws_config::defaults(BehaviorVersion::latest())
             .region(RegionProviderChain::first_try(Region::new(region)))
-            .credentials_provider(credentials)
+            // .credentials_provider(credentials)
             .load()
             .await;
         Ok(config)
@@ -90,8 +82,10 @@ impl AwsClient {
             }
         });
 
-        let lambda_name = env::var("LAMBDA_REGISTER").context("LAMBDA_REGISTER not found")?;
-        let response = self.invoke_lambda(lambda_name, payload.to_string()).await?;
+        let lambda_name = &CONFIG.aws.lambda.register;
+        let response = self
+            .invoke_lambda(lambda_name.to_string(), payload.to_string())
+            .await?;
 
         // Print raw response as string
         let raw_response = String::from_utf8_lossy(response.as_ref());
@@ -107,6 +101,7 @@ impl AwsClient {
     }
 
     fn save_credentials(&self, credentials: &IotCredentials) -> Result<()> {
+        info!("Saving credentials...");
         let config_dir = dirs::config_dir()
             .context("Failed to get config directory")?
             .join("luffy");
@@ -116,14 +111,14 @@ impl AwsClient {
         // Save certificate and private key to files
         fs::write(
             config_dir.join("certificate.pem"),
-            &credentials.certificatePem,
+            &credentials.certificate_pem,
         )?;
-        fs::write(config_dir.join("private.key"), &credentials.privateKey)?;
+        fs::write(config_dir.join("private.key"), &credentials.private_key)?;
         fs::write(
             config_dir.join("certificate.arn"),
-            &credentials.certificateArn,
+            &credentials.certificate_arn,
         )?;
-
+        info!("Credentials saved successfully");
         Ok(())
     }
 }

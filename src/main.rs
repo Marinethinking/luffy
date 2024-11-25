@@ -1,5 +1,7 @@
 use anyhow::Result;
-use dotenv::dotenv;
+
+use luffy::broker::MqttBroker;
+use luffy::config::{Config, CONFIG};
 use luffy::iot_server::IotServer;
 use luffy::mav_server::MavlinkServer;
 use luffy::web_server::WebServer;
@@ -12,10 +14,10 @@ use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Setup logging and env
-    dotenv().ok();
     setup_logging();
     info!("Application starting...");
+
+    info!("Region: {:?}", &CONFIG.aws.region);
 
     // Create a shutdown signal channel
     let (shutdown_tx, _) = broadcast::channel(1);
@@ -24,12 +26,14 @@ async fn main() -> Result<()> {
     let mav_server = MavlinkServer::new().await;
     let iot_server = IotServer::new().await;
     let web_server = WebServer::new().await;
+    let mqtt_broker = MqttBroker::new().await;
 
     // Spawn all services
     let mav_handle = spawn_mavlink_server(mav_server, shutdown_tx.subscribe());
     let iot_handle = spawn_iot_server(iot_server, shutdown_tx.subscribe());
     let web_handle = spawn_web_server(web_server, shutdown_tx.subscribe());
-    let _ = tokio::join!(mav_handle, iot_handle, web_handle);
+    let mqtt_handle = spawn_mqtt_broker(mqtt_broker, shutdown_tx.subscribe());
+    let _ = tokio::join!(mav_handle, iot_handle, web_handle, mqtt_handle);
 
     // Wait for shutdown signal
     match signal::ctrl_c().await {
@@ -46,6 +50,26 @@ async fn main() -> Result<()> {
 
     info!("All services stopped, shutting down");
 
+    Ok(())
+}
+
+async fn spawn_mqtt_broker(
+    mut broker: MqttBroker,
+    mut shutdown: broadcast::Receiver<()>,
+) -> Result<()> {
+    tokio::spawn(async move {
+        tokio::select! {
+            result = broker.start() => {
+                if let Err(e) = result {
+                    error!("MQTT broker error: {}", e);
+                }
+            }
+            _ = shutdown.recv() => {
+                info!("Shutting down MQTT broker...");
+                broker.stop().await;
+            }
+        }
+    });
     Ok(())
 }
 
@@ -73,7 +97,7 @@ async fn spawn_iot_server(
     mut server: IotServer,
     mut shutdown: broadcast::Receiver<()>,
 ) -> Result<()> {
-    let handle = tokio::spawn(async move {
+    tokio::spawn(async move {
         info!("About to start IoT server in select! macro...");
         tokio::select! {
             result = server.start() => {
@@ -87,7 +111,7 @@ async fn spawn_iot_server(
             }
         }
     });
-    handle.await?;
+
     Ok(())
 }
 

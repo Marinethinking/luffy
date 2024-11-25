@@ -1,15 +1,14 @@
-use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use rumqttc::QoS;
-use serde_json::Value;
 use tokio::fs;
-use tokio::time::{self, Duration};
+use tokio::time::Duration;
 use tracing::{debug, error, info};
 
 use crate::aws_client::AwsClient;
+use crate::config::CONFIG;
 use crate::util;
 use crate::vehicle::Vehicle;
 
@@ -31,6 +30,14 @@ impl IotServer {
 
     pub async fn start(&mut self) -> Result<()> {
         info!("Starting IoT server...");
+        if !self.is_registered() {
+            let aws_client = AwsClient::instance().await;
+            aws_client
+                .register_device()
+                .await
+                .context("Failed to register device")?;
+        }
+
         // Connect to MQTT
         let mqtt_client = self.connect_mqtt().await?;
         self.mqtt_client = Some(mqtt_client.clone());
@@ -38,7 +45,7 @@ impl IotServer {
         // Subscribe to command topics
         mqtt_client
             .subscribe(
-                &format!("{}/command/#", self.vehicle.device_id),
+                format!("{}/command/#", self.vehicle.device_id),
                 QoS::AtLeastOnce,
             )
             .await
@@ -71,8 +78,10 @@ impl IotServer {
 
         match topic {
             t if t == format!("{}/command/mode", vehicle.device_id) => {
-                let mode: String = serde_json::from_str(&payload_str)?;
-                vehicle.update_flight_mode(mode)?;
+                let payload_json: serde_json::Value = serde_json::from_str(&payload_str)?;
+                info!("Payload: {}", payload_json);
+                let mode = payload_json["mode"].as_str().unwrap_or("unknown");
+                vehicle.update_flight_mode(mode.to_string())?;
             }
             t if t == format!("{}/command/arm", vehicle.device_id) => {
                 let should_arm: bool = serde_json::from_str(&payload_str)?;
@@ -106,9 +115,10 @@ impl IotServer {
         let aws_root_cert = include_bytes!("../certs/AmazonRootCA.pem");
 
         let device_id = util::get_device_mac();
-        let aws_iot_endpoint = env::var("AWS_IOT_ENDPOINT")?;
-        let aws_iot_port = env::var("AWS_IOT_PORT")?.parse::<u16>()?;
-        let mut mqtt_options = rumqttc::MqttOptions::new(device_id, aws_iot_endpoint, aws_iot_port);
+        let aws_iot_endpoint = &CONFIG.aws.iot.endpoint;
+        let aws_iot_port = CONFIG.aws.iot.port;
+        let client_id = format!("{}_{}", device_id, uuid::Uuid::new_v4());
+        let mut mqtt_options = rumqttc::MqttOptions::new(client_id, aws_iot_endpoint, aws_iot_port);
 
         mqtt_options
             .set_keep_alive(Duration::from_secs(30))
@@ -127,19 +137,30 @@ impl IotServer {
         let vehicle = self.vehicle;
         // Spawn event loop handler
         tokio::spawn(async move {
+            info!("Starting MQTT event loop...");
             loop {
                 match eventloop.poll().await {
+                    Ok(rumqttc::Event::Incoming(rumqttc::Packet::SubAck(_))) => {
+                        info!("Subscription confirmed by broker");
+                    }
+                    Ok(rumqttc::Event::Incoming(rumqttc::Packet::ConnAck(_))) => {
+                        info!("Connected to MQTT broker");
+                    }
                     Ok(rumqttc::Event::Incoming(rumqttc::Packet::Publish(p))) => {
-                        info!("Received message on topic {}: {:?}", p.topic, p.payload);
+                        info!(
+                            "Received message - Topic: {}, Payload: {:?}",
+                            p.topic,
+                            String::from_utf8_lossy(&p.payload)
+                        );
                         if let Err(e) = Self::handle_message(vehicle, &p.topic, &p.payload).await {
                             error!("Failed to handle message: {}", e);
                         }
                     }
                     Ok(event) => {
-                        info!("MQTT Event: {:?}", event);
+                        // info!("Other MQTT Event: {:?}", event);
                     }
                     Err(e) => {
-                        error!("MQTT Error: {:?}", e);
+                        // error!("MQTT Error: {:?}", e);
                         tokio::time::sleep(Duration::from_secs(1)).await;
                     }
                 }
@@ -169,5 +190,15 @@ impl IotServer {
 
     pub async fn stop(&self) {
         self.running.store(false, Ordering::SeqCst);
+    }
+
+    fn is_registered(&self) -> bool {
+        let config_dir = dirs::config_dir()
+            .context("Failed to get config directory")
+            .unwrap()
+            .join("luffy");
+
+        let cert_path = config_dir.join("certificate.pem");
+        cert_path.exists()
     }
 }

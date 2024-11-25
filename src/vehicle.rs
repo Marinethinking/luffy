@@ -1,12 +1,9 @@
 use anyhow::anyhow;
 use anyhow::{Context, Result};
-use mac_address::get_mac_address;
 use serde::Serialize;
 use std::sync::{Arc, RwLock};
 use tokio::sync::OnceCell;
-use tracing::info;
 
-use crate::aws_client;
 use crate::util;
 
 static VEHICLE: OnceCell<Vehicle> = OnceCell::const_new();
@@ -101,15 +98,5 @@ impl Vehicle {
         state.flight_mode = mode;
         // Log mode change or perform additional actions
         Ok(())
-    }
-
-    pub fn is_registered(&self) -> bool {
-        let config_dir = dirs::config_dir()
-            .context("Failed to get config directory")
-            .unwrap()
-            .join("luffy");
-
-        let cert_path = config_dir.join("certificate.pem");
-        cert_path.exists()
     }
 }

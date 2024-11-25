@@ -8,6 +8,7 @@
             "cargo": {
                 "args": ["build"]
             },
+            "preLaunchTask": "rust: cargo build",
             "args": [],
             "cwd": "${workspaceFolder}",
             "env": {
