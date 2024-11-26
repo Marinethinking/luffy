@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use anyhow::{Context, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock};
 use tokio::sync::OnceCell;
 
@@ -8,7 +8,7 @@ use crate::util;
 
 static VEHICLE: OnceCell<Vehicle> = OnceCell::const_new();
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VehicleState {
     // Flight data
     pub yaw_degree: f32,

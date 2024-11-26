@@ -2,7 +2,7 @@ use anyhow::Result;
 
 use luffy::broker::MqttBroker;
 use luffy::config::{Config, CONFIG};
-use luffy::iot_server::IotServer;
+use luffy::iot::server::IotServer;
 use luffy::mav_server::MavlinkServer;
 use luffy::web_server::WebServer;
 use tokio::signal;
