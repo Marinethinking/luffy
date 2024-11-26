@@ -29,22 +29,47 @@ async fn main() -> Result<()> {
     let mqtt_broker = MqttBroker::new().await;
 
     // Spawn all services
-    let mav_handle = spawn_mavlink_server(mav_server, shutdown_tx.subscribe());
-    let iot_handle = spawn_iot_server(iot_server, shutdown_tx.subscribe());
-    let web_handle = spawn_web_server(web_server, shutdown_tx.subscribe());
-    let mqtt_handle = spawn_mqtt_broker(mqtt_broker, shutdown_tx.subscribe());
-    let _ = tokio::join!(mav_handle, iot_handle, web_handle, mqtt_handle);
+    let mav_handle = spawn_mavlink_server(mav_server, shutdown_tx.subscribe()).await;
 
-    // Wait for shutdown signal
-    match signal::ctrl_c().await {
-        Ok(()) => {
-            info!("Shutdown signal received, stopping services...");
-            shutdown_tx
-                .send(())
-                .expect("Failed to send shutdown signal");
+    let web_handle = spawn_web_server(web_server, shutdown_tx.subscribe()).await;
+    let mqtt_handle = if CONFIG.rumqttd.enabled {
+        info!("Starting MQTT broker...");
+        spawn_mqtt_broker(mqtt_broker, shutdown_tx.subscribe()).await
+    } else {
+        info!("MQTT broker disabled in config, skipping...");
+        tokio::spawn(async {})
+    };
+    info!("Starting IoT server...");
+    let iot_handle = spawn_iot_server(iot_server, shutdown_tx.subscribe()).await;
+
+    let shutdown_signal = async {
+        match signal::ctrl_c().await {
+            Ok(()) => {
+                info!("Shutdown signal received, stopping services...");
+                shutdown_tx
+                    .send(())
+                    .expect("Failed to send shutdown signal");
+            }
+            Err(err) => {
+                error!("Failed to listen for shutdown signal: {}", err);
+            }
         }
-        Err(err) => {
-            error!("Failed to listen for shutdown signal: {}", err);
+    };
+
+    let results = tokio::join!(
+        mav_handle,
+        iot_handle,
+        web_handle,
+        mqtt_handle,
+        shutdown_signal
+    );
+
+    for (result, name) in [results.0, results.1, results.2, results.3]
+        .into_iter()
+        .zip(["MAVLink server", "IoT server", "Web server", "MQTT broker"])
+    {
+        if let Err(e) = result {
+            error!("{} join error: {}", name, e);
         }
     }
 
@@ -56,7 +81,7 @@ async fn main() -> Result<()> {
 async fn spawn_mqtt_broker(
     mut broker: MqttBroker,
     mut shutdown: broadcast::Receiver<()>,
-) -> Result<()> {
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         tokio::select! {
             result = broker.start() => {
@@ -69,14 +94,13 @@ async fn spawn_mqtt_broker(
                 broker.stop().await;
             }
         }
-    });
-    Ok(())
+    })
 }
 
 async fn spawn_mavlink_server(
     server: MavlinkServer,
     mut shutdown: broadcast::Receiver<()>,
-) -> Result<()> {
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         tokio::select! {
             result = server.start() => {
@@ -89,14 +113,13 @@ async fn spawn_mavlink_server(
                 server.stop().await;
             }
         }
-    });
-    Ok(())
+    })
 }
 
 async fn spawn_iot_server(
     mut server: IotServer,
     mut shutdown: broadcast::Receiver<()>,
-) -> Result<()> {
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         info!("About to start IoT server in select! macro...");
         tokio::select! {
@@ -110,12 +133,13 @@ async fn spawn_iot_server(
                 server.stop().await;
             }
         }
-    });
-
-    Ok(())
+    })
 }
 
-async fn spawn_web_server(server: WebServer, mut shutdown: broadcast::Receiver<()>) -> Result<()> {
+async fn spawn_web_server(
+    server: WebServer,
+    mut shutdown: broadcast::Receiver<()>,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         tokio::select! {
             result = server.start() => {
@@ -128,8 +152,7 @@ async fn spawn_web_server(server: WebServer, mut shutdown: broadcast::Receiver<(
                 server.stop().await;
             }
         }
-    });
-    Ok(())
+    })
 }
 
 fn setup_logging() {
@@ -145,7 +168,7 @@ fn setup_logging() {
         ) // Pretty printing
         .with(
             EnvFilter::from_default_env()
-                .add_directive(Level::INFO.into())
+                .add_directive(Level::DEBUG.into())
                 .add_directive("tokio=debug".parse().unwrap()) // Tokio runtime logs
                 .add_directive("runtime=debug".parse().unwrap()),
         ) // Runtime events

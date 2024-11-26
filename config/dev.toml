@@ -2,6 +2,7 @@
 region = "ca-central-1"
 
 [aws.iot]
+enabled = true
 root_ca_path = "certs/AmazonRootCA.pem"
 endpoint = "a1w2o8b6t3ahv7-ats.iot.ca-central-1.amazonaws.com"
 port = 8883
@@ -11,5 +12,7 @@ port = 8883
 register = "arn:aws:lambda:ca-central-1:583818069008:function:amplify-d34e88yymcb7ax-de-registerIotThinglambdaCE-j14AZkH1hKNp"
 
 [rumqttd]
-server = "0.0.0.0"
-port = 1883
+enabled = true
+host = "127.0.0.1"
+port = 9183  # needs to be same with rumqttd.toml
+

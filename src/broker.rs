@@ -54,24 +54,14 @@ impl MqttBroker {
 
         info!("MQTT Config loaded successfully: {:?}", config);
 
-        let broker = Broker::new(config);
+        let mut broker = Broker::new(config);
         info!("Broker instance created");
 
-        let (mut link_tx, mut link_rx) = broker.link("singlenode").map_err(|e| {
-            error!("Failed to create broker link: {}", e);
-            e
-        })?;
-
+        let (mut link_tx, mut link_rx) = broker.link("singlenode")?;
         info!("Broker links established");
 
-        // Store broker instance
-        self.broker = Some(broker);
-
-        // Extract broker before spawning
-        let mut broker = self.broker.take().unwrap();
-
-        // Spawn the broker in a separate task
-        tokio::spawn(async move {
+        // Spawn the broker in a separate task and store its handle
+        let broker_handle = tokio::spawn(async move {
             info!("Starting MQTT broker...");
             if let Err(e) = broker.start() {
                 error!("Broker failed to start: {}", e);
@@ -79,9 +69,9 @@ impl MqttBroker {
             }
             Ok(())
         });
+        self.broker_handle = Some(broker_handle);
 
-        // Sleep save the world, never remove this
-        // Give the broker a moment to start up
+        // Sleep to allow broker to start
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
         // Subscribe to all topics
@@ -92,28 +82,30 @@ impl MqttBroker {
 
         info!("Successfully subscribed to all topics");
 
-        let mut count = 0;
-        self.running.store(true, Ordering::SeqCst);
-
-        while self.running.load(Ordering::SeqCst) {
-            match link_rx.recv().unwrap() {
-                Some(notification) => match notification {
-                    Notification::Forward(forward) => {
-                        count += 1;
-                        debug!(
-                            "Topic = {:?}, Count = {}, Payload = {} bytes",
-                            forward.publish.topic,
-                            count,
-                            forward.publish.payload.len()
-                        );
-                    }
-                    v => debug!("Received notification: {:?}", v),
-                },
-                None => continue,
+        // Spawn a separate task for the notification loop
+        let running = self.running.clone();
+        tokio::spawn(async move {
+            let mut count = 0;
+            while running.load(Ordering::SeqCst) {
+                match link_rx.recv().unwrap() {
+                    Some(notification) => match notification {
+                        Notification::Forward(forward) => {
+                            count += 1;
+                            debug!(
+                                "Topic = {:?}, Count = {}, Payload = {} bytes",
+                                forward.publish.topic,
+                                count,
+                                forward.publish.payload.len()
+                            );
+                        }
+                        v => debug!("Received notification: {:?}", v),
+                    },
+                    None => continue,
+                }
             }
-        }
+            info!("MQTT broker notification loop ended");
+        });
 
-        info!("MQTT broker loop ended");
         Ok(())
     }
 
