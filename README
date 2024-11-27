@@ -1,3 +1,22 @@
+# luffy
+
+Luffy is designed to be a onboard program for a smart self-driving vehicle.
+It connect multiple nodes in the network, and provide a web interface for monitoring and control.
+
+## features
+- Mqtt Broker:  Start a local mqtt broker for onboard communication
+- Web Server:    Start a web server for monitoring and control
+- Telemetry:    Publish telemetry data to both local and remote mqtt broker
+- Command:      Subscribe command from upstream node and sent to vehicle
+
 ## DEV
 (AWS SDK for Rust)[https://docs.aws.amazon.com/sdk-for-rust/latest/dg/welcome.html]
 (AWS SDK Examples)[https://github.com/awsdocs/aws-doc-sdk-examples/tree/main/rustv1]
+TO run luffy locally:
+1. install rust toolchain via rustup
+2. Set up your local aws credentials
+3. Start SITL sim_vehicle.py --out yourIP:port
+4. Open config/dev.toml, set everyserver, usually just mavlink url
+5. `cargo build`
+6. `cargo run`
+7. Open browser, navigate to http://localhost:9000
