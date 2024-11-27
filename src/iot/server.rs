@@ -22,10 +22,10 @@ impl IotServer {
         let mut handles = vec![];
         info!(
             "Starting IoT server... iot client enabled={}, broker client enabled={}",
-            CONFIG.aws.iot.enabled, CONFIG.rumqttd.enabled
+            CONFIG.iot.enabled, CONFIG.rumqttd.enabled
         );
 
-        if CONFIG.aws.iot.enabled {
+        if CONFIG.iot.enabled {
             if let Some(client) = &mut self.remote_client {
                 handles.push(client.start().await?);
             }

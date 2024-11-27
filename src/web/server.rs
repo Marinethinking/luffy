@@ -6,10 +6,11 @@ use std::{
     time::Duration,
 };
 
-use axum::{routing::get, Json, Router};
+use axum::{routing::get, Router};
+use tower_http::services::ServeDir;
 
-
-use crate::vehicle::Vehicle;
+use super::index_page;
+use crate::{config::CONFIG, vehicle::Vehicle};
 
 use anyhow::{Context, Result};
 
@@ -28,23 +29,28 @@ impl WebServer {
 
     pub async fn start(&self) -> Result<()> {
         let vehicle = self.vehicle;
-        let app = Router::new().route(
-            "/api/vehicle/state",
-            get(move || async move {
-                Json(
-                    serde_json::to_value(vehicle.get_state_snapshot().unwrap_or_default()).unwrap(),
-                )
-            }),
-        );
+
+        // Create the main router
+        let app = Router::new()
+            // Merge routes from index_page
+            .merge(index_page::routes(vehicle))
+            // Serve static files
+            .nest_service("/static", ServeDir::new("static"));
 
         self.running.store(true, Ordering::SeqCst);
 
-        let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
+        let host = CONFIG.web.host.clone();
+        let port = CONFIG.web.port;
+        println!("Starting web server on http://{}:{}", host, port);
+
+        let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port))
             .await
-            .context("Failed to bind to port 3000")?;
+            .context(format!("Failed to bind to port {}", port))?;
+
         axum::serve(listener, app)
             .await
             .context("Failed to serve")?;
+
         Ok(())
     }
 

@@ -5,6 +5,6 @@ pub mod config;
 pub mod mav_server;
 pub mod util;
 pub mod vehicle;
-pub mod web_server;
+pub mod web;
 
 pub mod iot;

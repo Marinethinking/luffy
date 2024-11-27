@@ -39,10 +39,10 @@ impl LocalIotClient {
             loop {
                 match eventloop.poll().await {
                     Ok(rumqttc::Event::Incoming(rumqttc::Packet::SubAck(_))) => {
-                        info!("Subscription confirmed by iot");
+                        debug!("Subscription confirmed by iot");
                     }
                     Ok(rumqttc::Event::Incoming(rumqttc::Packet::ConnAck(_))) => {
-                        info!("[IOT]Connected..... ");
+                        debug!("[IOT]Connected..... ");
                     }
                     Ok(rumqttc::Event::Incoming(rumqttc::Packet::Publish(p))) => {
                         debug!(
@@ -64,7 +64,7 @@ impl LocalIotClient {
         for attempt in 1..=30 {
             match client.try_publish("luffy/connected", QoS::AtLeastOnce, false, "true") {
                 Ok(_) => {
-                    info!(
+                    debug!(
                         "Successfully connected to broker after {} attempts",
                         attempt
                     );
@@ -89,10 +89,10 @@ impl LocalIotClient {
 
     async fn telemetry_loop(client: AsyncClient, running: Arc<AtomicBool>) {
         let vehicle = Vehicle::instance().await;
-        let mut interval = tokio::time::interval(Duration::from_secs(4));
+        let local_interval = CONFIG.iot.telemetry.local_interval;
+        let mut interval = tokio::time::interval(Duration::from_secs(local_interval));
         while running.load(Ordering::SeqCst) {
             interval.tick().await;
-            info!("Broker - Telemetry tick...");
 
             let state = match vehicle.get_state_snapshot() {
                 Ok(state) => state,
@@ -117,7 +117,7 @@ impl LocalIotClient {
                 .publish(&topic, QoS::AtLeastOnce, false, payload)
                 .await
             {
-                Ok(_) => info!("Broker - Successfully published telemetry"),
+                Ok(_) => debug!("Broker - Successfully published telemetry"),
                 Err(e) => error!("Broker - Failed to publish telemetry: {}", e),
             }
         }

@@ -1,10 +1,10 @@
 use anyhow::Result;
 
 use luffy::broker::MqttBroker;
-use luffy::config::{Config, CONFIG};
+use luffy::config::CONFIG;
 use luffy::iot::server::IotServer;
 use luffy::mav_server::MavlinkServer;
-use luffy::web_server::WebServer;
+use luffy::web::server::WebServer;
 use tokio::signal;
 use tokio::sync::broadcast;
 use tracing::{error, info, Level};
@@ -22,25 +22,23 @@ async fn main() -> Result<()> {
     // Create a shutdown signal channel
     let (shutdown_tx, _) = broadcast::channel(1);
 
-    // Initialize services
-    let mav_server = MavlinkServer::new().await;
-    let iot_server = IotServer::new().await;
-    let web_server = WebServer::new().await;
-    let mqtt_broker = MqttBroker::new().await;
-
     // Spawn all services
-    let mav_handle = spawn_mavlink_server(mav_server, shutdown_tx.subscribe()).await;
+    let mav_handle = spawn_mavlink_server(shutdown_tx.subscribe()).await;
 
-    let web_handle = spawn_web_server(web_server, shutdown_tx.subscribe()).await;
+    let web_handle = spawn_web_server(shutdown_tx.subscribe()).await;
     let mqtt_handle = if CONFIG.rumqttd.enabled {
-        info!("Starting MQTT broker...");
-        spawn_mqtt_broker(mqtt_broker, shutdown_tx.subscribe()).await
+        spawn_mqtt_broker(shutdown_tx.subscribe()).await
     } else {
         info!("MQTT broker disabled in config, skipping...");
         tokio::spawn(async {})
     };
-    info!("Starting IoT server...");
-    let iot_handle = spawn_iot_server(iot_server, shutdown_tx.subscribe()).await;
+
+    let iot_handle = if CONFIG.iot.enabled {
+        spawn_iot_server(shutdown_tx.subscribe()).await
+    } else {
+        info!("IoT server disabled in config, skipping...");
+        tokio::spawn(async {})
+    };
 
     let shutdown_signal = async {
         match signal::ctrl_c().await {
@@ -78,10 +76,9 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn spawn_mqtt_broker(
-    mut broker: MqttBroker,
-    mut shutdown: broadcast::Receiver<()>,
-) -> tokio::task::JoinHandle<()> {
+async fn spawn_mqtt_broker(mut shutdown: broadcast::Receiver<()>) -> tokio::task::JoinHandle<()> {
+    info!("Starting MQTT broker...");
+    let mut broker = MqttBroker::new().await;
     tokio::spawn(async move {
         tokio::select! {
             result = broker.start() => {
@@ -98,28 +95,27 @@ async fn spawn_mqtt_broker(
 }
 
 async fn spawn_mavlink_server(
-    server: MavlinkServer,
     mut shutdown: broadcast::Receiver<()>,
 ) -> tokio::task::JoinHandle<()> {
+    let mut mav_server = MavlinkServer::new().await;
     tokio::spawn(async move {
         tokio::select! {
-            result = server.start() => {
+            result = mav_server.start() => {
                 if let Err(e) = result {
                     error!("MAVLink server error: {}", e);
                 }
             }
             _ = shutdown.recv() => {
                 info!("Shutting down MAVLink server...");
-                server.stop().await;
+                mav_server.stop().await;
             }
         }
     })
 }
 
-async fn spawn_iot_server(
-    mut server: IotServer,
-    mut shutdown: broadcast::Receiver<()>,
-) -> tokio::task::JoinHandle<()> {
+async fn spawn_iot_server(mut shutdown: broadcast::Receiver<()>) -> tokio::task::JoinHandle<()> {
+    info!("Starting IoT server...");
+    let mut server = IotServer::new().await;
     tokio::spawn(async move {
         info!("About to start IoT server in select! macro...");
         tokio::select! {
@@ -136,10 +132,9 @@ async fn spawn_iot_server(
     })
 }
 
-async fn spawn_web_server(
-    server: WebServer,
-    mut shutdown: broadcast::Receiver<()>,
-) -> tokio::task::JoinHandle<()> {
+async fn spawn_web_server(mut shutdown: broadcast::Receiver<()>) -> tokio::task::JoinHandle<()> {
+    info!("Starting web server...");
+    let server = WebServer::new().await;
     tokio::spawn(async move {
         tokio::select! {
             result = server.start() => {
@@ -168,9 +163,11 @@ fn setup_logging() {
         ) // Pretty printing
         .with(
             EnvFilter::from_default_env()
-                .add_directive(Level::DEBUG.into())
+                .add_directive(Level::INFO.into())
                 .add_directive("tokio=debug".parse().unwrap()) // Tokio runtime logs
-                .add_directive("runtime=debug".parse().unwrap()),
+                .add_directive("runtime=debug".parse().unwrap())
+                .add_directive("rumqttc=info".parse().unwrap())
+                .add_directive("rumqttd=info".parse().unwrap()),
         ) // Runtime events
         .try_init()
         .expect("Failed to initialize logging");

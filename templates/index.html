@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Vehicle Control System</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+</head>
+
+<body>
+    <div class="container">
+        <h1>System Dashboard</h1>
+
+        <div class="dashboard-grid">
+            <!-- Vehicle Status Card -->
+            <div class="status-card">
+                <h2>Vehicle Status</h2>
+                <div class="status-item">
+                    <label>Location:</label>
+                    <span>{{ status.location }}</span>
+                </div>
+                <div class="status-item">
+                    <label>Yaw:</label>
+                    <span>{{ status.yaw }}°</span>
+                </div>
+                <div class="status-item">
+                    <label>Battery:</label>
+                    <span>{{ status.battery }}%</span>
+                </div>
+                <div class="status-item">
+                    <label>Armed:</label>
+                    <span class="status-indicator {% if status.armed %}connected{% else %}disconnected{% endif %}">
+                        {% if status.armed %}Armed{% else %}Disarmed{% endif %}
+                    </span>
+                </div>
+                <div class="status-item">
+                    <label>Mode:</label>
+                    <span class="mode-indicator">{{ status.flight_mode }}</span>
+                </div>
+            </div>
+
+            <!-- Server Status Card -->
+            <div class="status-card">
+                <h2>Server Status</h2>
+                <div class="connection-status">
+                    <p>Server:
+                        <span class="status-indicator connected">
+                            {{ status.server_status }}
+                        </span>
+                    </p>
+                    <p>MAVLink:
+                        <span
+                            class="status-indicator {% if status.mavlink_connected %}connected{% else %}disconnected{% endif %}">
+                            {% if status.mavlink_connected %}Connected{% else %}Disconnected{% endif %}
+                        </span>
+                    </p>
+                    <p>IoT:
+                        <span
+                            class="status-indicator {% if status.iot_connected %}connected{% else %}disconnected{% endif %}">
+                            {% if status.iot_connected %}Connected{% else %}Disconnected{% endif %}
+                        </span>
+                    </p>
+                    <p>Broker:
+                        <span
+                            class="status-indicator {% if status.broker_connected %}connected{% else %}disconnected{% endif %}">
+                            {% if status.broker_connected %}Connected{% else %}Disconnected{% endif %}
+                        </span>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Auto-refresh status every 5 seconds
+        setInterval(async () => {
+            console.log("fetching status");
+            const response = await fetch('/api/status');
+            let statusData = await response.json();
+            console.log("statusData", statusData);
+            updateUI(statusData);
+        }, 1000);
+
+        function updateUI(data) {
+            try {
+                // Update location, yaw, and battery
+                document.querySelector('.status-item:nth-of-type(1) span').textContent = data.location;
+                document.querySelector('.status-item:nth-of-type(2) span').textContent = `${data.yaw}°`;
+                document.querySelector('.status-item:nth-of-type(3) span').textContent = `${data.battery}%`;
+
+                // Update armed status
+                const armedIndicator = document.querySelector('.status-item:nth-of-type(4) .status-indicator');
+                armedIndicator.className = `status-indicator ${data.armed ? 'connected' : 'disconnected'}`;
+                armedIndicator.textContent = data.armed ? 'Armed' : 'Disarmed';
+
+                // Update flight mode
+                document.querySelector('.mode-indicator').textContent = data.flight_mode;
+
+                // Update server status
+                const serverStatus = document.querySelector('.connection-status p:nth-of-type(1) .status-indicator');
+                serverStatus.textContent = data.server_status;
+
+                // Update other connection statuses
+                const mavlinkStatus = document.querySelector('.connection-status p:nth-of-type(2) .status-indicator');
+                const iotStatus = document.querySelector('.connection-status p:nth-of-type(3) .status-indicator');
+                const brokerStatus = document.querySelector('.connection-status p:nth-of-type(4) .status-indicator');
+
+                if (mavlinkStatus) {
+                    mavlinkStatus.className = `status-indicator ${data.mavlink_connected ? 'connected' : 'disconnected'}`;
+                    mavlinkStatus.textContent = data.mavlink_connected ? 'Connected' : 'Disconnected';
+                }
+                if (iotStatus) {
+                    iotStatus.className = `status-indicator ${data.iot_connected ? 'connected' : 'disconnected'}`;
+                    iotStatus.textContent = data.iot_connected ? 'Connected' : 'Disconnected';
+                }
+                if (brokerStatus) {
+                    brokerStatus.className = `status-indicator ${data.broker_connected ? 'connected' : 'disconnected'}`;
+                    brokerStatus.textContent = data.broker_connected ? 'Connected' : 'Disconnected';
+                }
+            } catch (error) {
+                console.error('Error updating UI:', error);
+            }
+        }
+    </script>
+</body>
+
+</html>

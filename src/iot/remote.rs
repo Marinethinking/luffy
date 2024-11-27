@@ -45,7 +45,7 @@ impl RemoteIotClient {
             .await
             .context("Failed to subscribe")?;
 
-        info!("[IOT]Successfully subscribed to {}/command/#", device_id);
+        debug!("[IOT]Successfully subscribed to {}/command/#", device_id);
 
         let running = self.running.clone();
 
@@ -59,11 +59,11 @@ impl RemoteIotClient {
     }
 
     async fn telemetry_loop(client: AsyncClient, running: Arc<AtomicBool>) {
-        let mut interval = tokio::time::interval(Duration::from_secs(4));
+        let remote_interval = CONFIG.iot.telemetry.remote_interval;
+        let mut interval = tokio::time::interval(Duration::from_secs(remote_interval));
         let vehicle = Vehicle::instance().await;
         while running.load(Ordering::SeqCst) {
             interval.tick().await;
-            info!("AWS - Telemetry tick...");
 
             let state = match vehicle.get_state_snapshot() {
                 Ok(state) => state,
@@ -88,7 +88,7 @@ impl RemoteIotClient {
                 .publish(&topic, QoS::AtLeastOnce, false, payload)
                 .await
             {
-                Ok(_) => info!("AWS - Successfully published telemetry"),
+                Ok(_) => debug!("AWS - Successfully published telemetry"),
                 Err(e) => error!("AWS - Failed to publish telemetry: {}", e),
             }
         }
@@ -126,14 +126,14 @@ impl RemoteIotClient {
         let (client, mut eventloop) = rumqttc::AsyncClient::new(mqtt_options, 10);
 
         tokio::spawn(async move {
-            info!("Starting iot event loop...");
+            debug!("Starting iot event loop...");
             loop {
                 match eventloop.poll().await {
                     Ok(rumqttc::Event::Incoming(rumqttc::Packet::SubAck(_))) => {
-                        info!("Subscription confirmed by iot");
+                        debug!("Subscription confirmed by iot");
                     }
                     Ok(rumqttc::Event::Incoming(rumqttc::Packet::ConnAck(_))) => {
-                        info!("[IOT]Connected..... ");
+                        debug!("[IOT]Connected..... ");
                     }
                     Ok(rumqttc::Event::Incoming(rumqttc::Packet::Publish(p))) => {
                         debug!(
@@ -160,12 +160,12 @@ impl RemoteIotClient {
     async fn handle_message(topic: &str, payload: &[u8]) -> Result<()> {
         let vehicle = Vehicle::instance().await;
         let payload_str = String::from_utf8_lossy(payload);
-        info!("Received message on {}: {}", topic, payload_str);
+        debug!("Received message on {}: {}", topic, payload_str);
 
         match topic {
             t if t == format!("{}/command/mode", vehicle.device_id) => {
                 let payload_json: serde_json::Value = serde_json::from_str(&payload_str)?;
-                info!("Payload: {}", payload_json);
+                debug!("Payload: {}", payload_json);
                 let mode = payload_json["mode"].as_str().unwrap_or("unknown");
                 vehicle.update_flight_mode(mode.to_string())?;
             }
@@ -178,7 +178,7 @@ impl RemoteIotClient {
                 }
             }
             _ => {
-                info!("Unhandled topic: {}", topic);
+                debug!("Unhandled topic: {}", topic);
             }
         }
         Ok(())

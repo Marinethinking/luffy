@@ -2,17 +2,31 @@
 region = "ca-central-1"
 
 [aws.iot]
-enabled = true
 root_ca_path = "certs/AmazonRootCA.pem"
 endpoint = "a1w2o8b6t3ahv7-ats.iot.ca-central-1.amazonaws.com"
 port = 8883
 
-
 [aws.lambda]
 register = "arn:aws:lambda:ca-central-1:583818069008:function:amplify-d34e88yymcb7ax-de-registerIotThinglambdaCE-j14AZkH1hKNp"
+
+
+[iot]
+enabled = true
+
+[iot.telemetry]
+local_interval = 1 # seconds
+remote_interval = 4 # seconds
 
 [rumqttd]
 enabled = true
 host = "127.0.0.1"
 port = 9183  # needs to be same with rumqttd.toml
+
+[mavlink]
+connection_string = "udpin:192.168.20.183:14559"  
+
+[web]
+enabled = true
+host = "0.0.0.0"
+port = 9000
 

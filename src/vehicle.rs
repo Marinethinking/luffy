@@ -2,8 +2,10 @@ use anyhow::anyhow;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock};
+use tokio::sync::mpsc;
 use tokio::sync::OnceCell;
 
+use crate::mav_server::MavCommand;
 use crate::util;
 
 static VEHICLE: OnceCell<Vehicle> = OnceCell::const_new();
@@ -16,7 +18,7 @@ pub struct VehicleState {
     pub roll_degree: f32,
     pub altitude: f32,
     pub battery_percentage: f32,
-    pub gps_position: (f64, f64), // (latitude, longitude)
+    pub location: (f64, f64), // (latitude, longitude)
     pub armed: bool,
     pub flight_mode: String,
 
@@ -33,7 +35,7 @@ impl Default for VehicleState {
             roll_degree: 0.0,
             altitude: 0.0,
             battery_percentage: 0.0,
-            gps_position: (0.0, 0.0),
+            location: (0.0, 0.0),
             armed: false,
             flight_mode: "STABILIZE".to_string(),
             last_heartbeat: std::time::SystemTime::now(),
@@ -46,6 +48,7 @@ impl Default for VehicleState {
 pub struct Vehicle {
     pub device_id: String,
     state: Arc<RwLock<VehicleState>>,
+    command_tx: Arc<RwLock<Option<mpsc::Sender<MavCommand>>>>,
 }
 
 impl Vehicle {
@@ -55,6 +58,7 @@ impl Vehicle {
                 Self {
                     device_id: util::get_device_mac(),
                     state: Arc::new(RwLock::new(VehicleState::default())),
+                    command_tx: Arc::new(RwLock::new(None)),
                 }
             })
             .await
@@ -97,6 +101,47 @@ impl Vehicle {
             .map_err(|e| anyhow!("Lock error: {}", e))?;
         state.flight_mode = mode;
         // Log mode change or perform additional actions
+        Ok(())
+    }
+
+    pub fn set_command_sender(&self, sender: mpsc::Sender<MavCommand>) -> Result<()> {
+        let mut tx = self
+            .command_tx
+            .write()
+            .map_err(|e| anyhow!("Lock error: {}", e))?;
+        *tx = Some(sender);
+        Ok(())
+    }
+
+    pub fn send_command(&self, command: MavCommand) -> Result<()> {
+        let tx = self
+            .command_tx
+            .read()
+            .map_err(|e| anyhow!("Lock error: {}", e))?;
+        if let Some(sender) = tx.as_ref() {
+            sender.try_send(command).context("Failed to send command")?;
+            Ok(())
+        } else {
+            Err(anyhow!("Command sender not initialized"))
+        }
+    }
+
+    pub fn update_armed_state(&self, armed: bool) -> Result<()> {
+        let mut state = self
+            .state
+            .write()
+            .map_err(|e| anyhow!("Lock error: {}", e))?;
+        state.armed = armed;
+        Ok(())
+    }
+
+    pub fn update_position(&self, lat: f64, lon: f64, alt: f32) -> Result<()> {
+        let mut state = self
+            .state
+            .write()
+            .map_err(|e| anyhow!("Lock error: {}", e))?;
+        state.location = (lat, lon);
+        state.altitude = alt;
         Ok(())
     }
 }

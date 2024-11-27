@@ -11,7 +11,9 @@ pub static CONFIG: Lazy<Config> =
 pub struct Config {
     pub aws: AwsConfig,
     pub rumqttd: RumqttdConfig,
-    // Add other top-level configs as needed
+    pub mavlink: MavlinkConfig,
+    pub iot: IotConfig,
+    pub web: WebConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -32,13 +34,12 @@ pub struct ServerConfig {
 #[derive(Debug, Deserialize)]
 pub struct AwsConfig {
     pub region: String,
-    pub iot: IotConfig,
+    pub iot: AwsIotConfig,
     pub lambda: LambdaConfig,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct IotConfig {
-    pub enabled: bool,
+pub struct AwsIotConfig {
     pub endpoint: String,
     pub port: u16,
     pub root_ca_path: String,
@@ -47,6 +48,30 @@ pub struct IotConfig {
 #[derive(Debug, Deserialize)]
 pub struct LambdaConfig {
     pub register: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct IotConfig {
+    pub enabled: bool,
+    pub telemetry: IotTelemetryConfig,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct IotTelemetryConfig {
+    pub local_interval: u64,
+    pub remote_interval: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MavlinkConfig {
+    pub connection_string: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct WebConfig {
+    pub enabled: bool,
+    pub host: String,
+    pub port: u16,
 }
 
 // ... other config structs ...
