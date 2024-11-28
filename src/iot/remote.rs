@@ -59,7 +59,7 @@ impl RemoteIotClient {
     }
 
     async fn telemetry_loop(client: AsyncClient, running: Arc<AtomicBool>) {
-        let remote_interval = CONFIG.iot.telemetry.remote_interval;
+        let remote_interval = CONFIG.iot.remote_interval;
         let mut interval = tokio::time::interval(Duration::from_secs(remote_interval));
         let vehicle = Vehicle::instance().await;
         while running.load(Ordering::SeqCst) {

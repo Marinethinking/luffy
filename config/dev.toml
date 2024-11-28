@@ -1,3 +1,14 @@
+[feature]
+local_iot = true
+remote_iot = true
+broker = true
+mavlink = true
+ota = true
+
+[general]
+# TRACE, DEBUG, INFO, WARN, ERROR
+log_level = "info"
+
 [aws]
 region = "ca-central-1"
 
@@ -11,14 +22,10 @@ register = "arn:aws:lambda:ca-central-1:583818069008:function:amplify-d34e88yymc
 
 
 [iot]
-enabled = true
-
-[iot.telemetry]
 local_interval = 1 # seconds
 remote_interval = 4 # seconds
 
-[rumqttd]
-enabled = true
+[broker]
 host = "127.0.0.1"
 port = 9183  # needs to be same with rumqttd.toml
 
@@ -26,7 +33,6 @@ port = 9183  # needs to be same with rumqttd.toml
 connection_string = "udpin:192.168.20.183:14559"  
 
 [web]
-enabled = true
 host = "0.0.0.0"
 port = 9000
 

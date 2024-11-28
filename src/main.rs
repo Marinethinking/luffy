@@ -23,17 +23,22 @@ async fn main() -> Result<()> {
     let (shutdown_tx, _) = broadcast::channel(1);
 
     // Spawn all services
-    let mav_handle = spawn_mavlink_server(shutdown_tx.subscribe()).await;
+    let mav_handle = if CONFIG.feature.mavlink {
+        spawn_mavlink_server(shutdown_tx.subscribe()).await
+    } else {
+        info!("MAVLink server disabled in config, skipping...");
+        tokio::spawn(async {})
+    };
 
     let web_handle = spawn_web_server(shutdown_tx.subscribe()).await;
-    let mqtt_handle = if CONFIG.rumqttd.enabled {
+    let mqtt_handle = if CONFIG.feature.broker {
         spawn_mqtt_broker(shutdown_tx.subscribe()).await
     } else {
         info!("MQTT broker disabled in config, skipping...");
         tokio::spawn(async {})
     };
 
-    let iot_handle = if CONFIG.iot.enabled {
+    let iot_handle = if CONFIG.feature.local_iot || CONFIG.feature.remote_iot {
         spawn_iot_server(shutdown_tx.subscribe()).await
     } else {
         info!("IoT server disabled in config, skipping...");
@@ -117,7 +122,6 @@ async fn spawn_iot_server(mut shutdown: broadcast::Receiver<()>) -> tokio::task:
     info!("Starting IoT server...");
     let mut server = IotServer::new().await;
     tokio::spawn(async move {
-        info!("About to start IoT server in select! macro...");
         tokio::select! {
             result = server.start() => {
                 if let Err(e) = result {
@@ -151,6 +155,7 @@ async fn spawn_web_server(mut shutdown: broadcast::Receiver<()>) -> tokio::task:
 }
 
 fn setup_logging() {
+    let log_level = &CONFIG.general.log_level;
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::fmt::layer()
@@ -163,7 +168,7 @@ fn setup_logging() {
         ) // Pretty printing
         .with(
             EnvFilter::from_default_env()
-                .add_directive(Level::INFO.into())
+                .add_directive(log_level.parse().unwrap())
                 .add_directive("tokio=debug".parse().unwrap()) // Tokio runtime logs
                 .add_directive("runtime=debug".parse().unwrap())
                 .add_directive("rumqttc=info".parse().unwrap())

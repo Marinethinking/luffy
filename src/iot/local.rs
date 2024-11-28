@@ -24,8 +24,8 @@ impl LocalIotClient {
 
     pub async fn start(&mut self) -> Result<JoinHandle<()>> {
         info!("Starting broker client...");
-        let host = &CONFIG.rumqttd.host;
-        let port = CONFIG.rumqttd.port;
+        let host = &CONFIG.broker.host;
+        let port = CONFIG.broker.port;
         let mut mqtt_options = rumqttc::MqttOptions::new("luffy", host, port);
         mqtt_options
             .set_keep_alive(Duration::from_secs(30))
@@ -89,7 +89,7 @@ impl LocalIotClient {
 
     async fn telemetry_loop(client: AsyncClient, running: Arc<AtomicBool>) {
         let vehicle = Vehicle::instance().await;
-        let local_interval = CONFIG.iot.telemetry.local_interval;
+        let local_interval = CONFIG.iot.local_interval;
         let mut interval = tokio::time::interval(Duration::from_secs(local_interval));
         while running.load(Ordering::SeqCst) {
             interval.tick().await;

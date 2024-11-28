@@ -20,18 +20,15 @@ impl IotServer {
 
     pub async fn start(&mut self) -> Result<()> {
         let mut handles = vec![];
-        info!(
-            "Starting IoT server... iot client enabled={}, broker client enabled={}",
-            CONFIG.iot.enabled, CONFIG.rumqttd.enabled
-        );
+        info!("Starting IoT server...");
 
-        if CONFIG.iot.enabled {
+        if CONFIG.feature.remote_iot {
             if let Some(client) = &mut self.remote_client {
                 handles.push(client.start().await?);
             }
         }
 
-        if CONFIG.rumqttd.enabled {
+        if CONFIG.feature.local_iot {
             if let Some(client) = &mut self.local_client {
                 handles.push(client.start().await?);
             }
