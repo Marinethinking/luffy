@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use aws_config::{meta::region::RegionProviderChain, BehaviorVersion, Region};
 use aws_sdk_lambda::{config::Credentials, primitives::Blob, Client as LambdaClient};
+use aws_sdk_s3::Client as S3Client;
 
 use crate::config::CONFIG;
 use crate::util;
@@ -16,6 +17,7 @@ static AWS_CLIENT: OnceCell<AwsClient> = OnceCell::const_new();
 
 pub struct AwsClient {
     lambda_client: LambdaClient,
+    s3_client: S3Client,
 }
 
 #[derive(Debug, Deserialize)]
@@ -34,7 +36,6 @@ impl AwsClient {
 
         let config = aws_config::defaults(BehaviorVersion::latest())
             .region(RegionProviderChain::first_try(Region::new(region)))
-            // .credentials_provider(credentials)
             .load()
             .await;
         Ok(config)
@@ -50,6 +51,7 @@ impl AwsClient {
 
                 AwsClient {
                     lambda_client: LambdaClient::new(&config),
+                    s3_client: S3Client::new(&config),
                 }
             })
             .await
@@ -120,5 +122,28 @@ impl AwsClient {
         )?;
         info!("Credentials saved successfully");
         Ok(())
+    }
+
+    pub async fn upload_to_s3(&self, data: Vec<u8>, key: &str) -> Result<()> {
+        self.s3_client
+            .put_object()
+            .bucket(&CONFIG.ota.s3_bucket)
+            .key(key)
+            .body(data.into())
+            .send()
+            .await?;
+        
+        Ok(())
+    }
+
+    pub async fn download_from_s3(&self, key: &str) -> Result<Vec<u8>> {
+        let response = self.s3_client
+            .get_object()
+            .bucket(&CONFIG.ota.s3_bucket)
+            .key(key)
+            .send()
+            .await?;
+            
+        Ok(response.body.collect().await?.into_bytes().to_vec())
     }
 }

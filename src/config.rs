@@ -15,6 +15,7 @@ pub struct Config {
     pub mavlink: MavlinkConfig,
     pub iot: IotConfig,
     pub web: WebConfig,
+    pub ota: OtaConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -71,6 +72,15 @@ pub struct MavlinkConfig {
 pub struct WebConfig {
     pub host: String,
     pub port: u16,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OtaConfig {
+    pub check_interval: u64,
+    pub version_check_url: String,
+    pub s3_bucket: String,
+    pub bin_name: String,
+    pub release_path: String,
 }
 
 // ... other config structs ...

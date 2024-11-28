@@ -25,6 +25,7 @@ pub struct VehicleState {
     // System status
     pub last_heartbeat: std::time::SystemTime,
     pub errors: Vec<String>,
+    pub luffy: String,
 }
 
 impl Default for VehicleState {
@@ -37,9 +38,10 @@ impl Default for VehicleState {
             battery_percentage: 0.0,
             location: (0.0, 0.0),
             armed: false,
-            flight_mode: "STABILIZE".to_string(),
+            flight_mode: "MANUAL".to_string(),
             last_heartbeat: std::time::SystemTime::now(),
             errors: Vec::new(),
+            luffy: env!("CARGO_PKG_VERSION").to_string(),
         }
     }
 }

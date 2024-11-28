@@ -17,6 +17,14 @@ TO run luffy locally:
 2. Set up your local aws credentials
 3. Start SITL sim_vehicle.py --out yourIP:port
 4. Open config/dev.toml, set everyserver, usually just mavlink url
-5. `cargo build`
-6. `cargo run`
-7. Open browser, navigate to http://localhost:9000
+5. Open your vscode settings.json by cmd + , 
+    and add `"rust-analyzer.cargo.buildBeforeRun": true`
+6. `cargo build`
+7. `cargo run`
+8. Open browser, navigate to http://localhost:9000
+
+
+
+## RELEASE
+1. Edit config/dev.toml, set ota check_interval, version_check_url, s3_bucket, bin_name, release_path
+2. cargo run --features dev-tools --bin release
