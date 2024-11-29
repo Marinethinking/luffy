@@ -4,13 +4,11 @@ use num_traits::FromPrimitive;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::time::Duration;
 use tokio::sync::mpsc;
-use tracing::{debug, info};
+use tracing::info;
 
 use crate::config::CONFIG;
 use crate::vehicle::Vehicle;
-use mavlink::ardupilotmega::MavMode;
 
 pub struct MavlinkServer {
     vehicle: &'static Vehicle,

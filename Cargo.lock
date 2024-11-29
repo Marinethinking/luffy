@@ -2261,7 +2261,7 @@ dependencies = [
 
 [[package]]
 name = "luffy"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "askama",
@@ -2274,6 +2274,8 @@ dependencies = [
  "chrono",
  "config 0.14.1",
  "dirs",
+ "futures-util",
+ "indicatif",
  "mac_address",
  "mavlink",
  "num-traits",

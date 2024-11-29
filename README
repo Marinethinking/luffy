@@ -1,30 +1,79 @@
-# luffy
+# Luffy
 
-Luffy is designed to be a onboard program for a smart self-driving vehicle.
-It connect multiple nodes in the network, and provide a web interface for monitoring and control.
+A smart vehicle onboard program that provides network connectivity and web-based monitoring/control interface.
 
-## features
-- Mqtt Broker:  Start a local mqtt broker for onboard communication
-- Web Server:    Start a web server for monitoring and control
-- Telemetry:    Publish telemetry data to both local and remote mqtt broker
-- Command:      Subscribe command from upstream node and sent to vehicle
+## Features
 
-## DEV
-(AWS SDK for Rust)[https://docs.aws.amazon.com/sdk-for-rust/latest/dg/welcome.html]
-(AWS SDK Examples)[https://github.com/awsdocs/aws-doc-sdk-examples/tree/main/rustv1]
-TO run luffy locally:
-1. install rust toolchain via rustup
-2. Set up your local aws credentials
-3. Start SITL sim_vehicle.py --out yourIP:port
-4. Open config/dev.toml, set everyserver, usually just mavlink url
-5. Open your vscode settings.json by cmd + , 
-    and add `"rust-analyzer.cargo.buildBeforeRun": true`
-6. `cargo build`
-7. `cargo run`
-8. Open browser, navigate to http://localhost:9000
+- **MQTT Broker**: Local broker for onboard communication
+- **Web Server**: Web interface for monitoring and control
+- **Telemetry**: Data publishing to both local and remote MQTT brokers
+- **Command**: Command subscription from upstream node to vehicle
+
+## Development Setup
+
+### Prerequisites
+- Rust toolchain (via [rustup](https://rustup.rs/))
+- AWS credentials configured locally
+- SITL simulator (for testing)
+- VSCode with rust-analyzer extension (recommended)
+- dev tools: 
+  - `cargo install cargo-edit`   
+  - `cargo install cargo-watch`  -> `cargo watch -d 2000 -x run`
+
+### Configuration
+1. Configure `config/dev.toml`:
+   - Set mavlink URL
+   - Configure OTA settings (for release):
+     - `check_interval`
+     - `version_check_url`
+     - `s3_bucket`
+     - `bin_name`
+     - `release_path`
+
+### VSCode Setup
+Add to settings.json (Cmd/Ctrl + ,):
+```json
+{
+    "rust-analyzer.cargo.buildBeforeRun": true
+}
+```
+
+### Running Locally
+1. Start SITL simulator:
+   ```bash
+   sim_vehicle.py --out <YOUR_IP>:<PORT>
+   ```
+
+2. Build and run:
+   ```bash
+   cargo build
+   cargo run
+   ```
+
+3. Access web interface at [http://localhost:9000](http://localhost:9000)
+
+## Release 
+
+### Prerequisites
+- Install cross-compilation tool:
+   ```bash
+   cargo install cross --git https://github.com/cross-rs/cross
+   ```
+- Test OTA:
+  ```bash
+  cargo run --bin test_ota
+  ```
+
+### Release Process
+1. Change version in `Cargo.toml`
+2. Check release config [OTA] in `config/dev.toml`
+3. Build and upload to S3(need docker):
+   ```bash
+   sudo cargo run --features dev-tools --bin release
+   ```
 
 
 
-## RELEASE
-1. Edit config/dev.toml, set ota check_interval, version_check_url, s3_bucket, bin_name, release_path
-2. cargo run --features dev-tools --bin release
+## Resources
+- [AWS SDK for Rust Documentation](https://docs.aws.amazon.com/sdk-for-rust/latest/dg/welcome.html)
+- [AWS SDK Examples](https://github.com/awsdocs/aws-doc-sdk-examples/tree/main/rustv1)

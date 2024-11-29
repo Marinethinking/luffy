@@ -1,3 +1,4 @@
+use crate::ota::version::VERSION;
 use crate::vehicle::{Vehicle, VehicleState};
 use askama::Template;
 use axum::{
@@ -22,6 +23,9 @@ pub struct StatusViewModel {
     pub mavlink_connected: bool,
     pub iot_connected: bool,
     pub broker_connected: bool,
+
+    // Add version field
+    pub version: String,
 }
 
 impl From<VehicleState> for StatusViewModel {
@@ -34,9 +38,12 @@ impl From<VehicleState> for StatusViewModel {
             flight_mode: state.flight_mode,
 
             server_status: "Running".to_string(),
-            mavlink_connected: true,  // Replace with actual status
-            iot_connected: true,      // Replace with actual status
-            broker_connected: true,   // Replace with actual status
+            mavlink_connected: true, // Replace with actual status
+            iot_connected: true,     // Replace with actual status
+            broker_connected: true,  // Replace with actual status
+
+            // Add version
+            version: VERSION.to_string(),
         }
     }
 }

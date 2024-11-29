@@ -24,11 +24,12 @@ async fn upload_to_s3(client: &AwsClient, data: Vec<u8>, key: &str) -> Result<()
 #[tokio::main]
 async fn main() -> Result<()> {
     let version = env!("CARGO_PKG_VERSION");
-    info!("🚀 Building release version {version}...");
+    let target = "aarch64-unknown-linux-gnu";
+    info!("🚀 Building release version {version} for {target}...");
 
     // Build release
-    let status = Command::new("cargo")
-        .args(["build", "--release"])
+    let status = Command::new("cross")
+        .args(["build", "--release", "--target", target])
         .status()?;
 
     if !status.success() {
@@ -38,17 +39,21 @@ async fn main() -> Result<()> {
     // Get AWS client instance
     let client = AwsClient::instance().await;
 
-    println!("☁️  Uploading to S3...");
+    info!("☁️  Uploading to S3...");
 
     // Read binary
-    let binary = std::fs::read("target/release/luffy")?;
+    let binary_path = format!("target/{}/release/luffy", target);
+    let binary = std::fs::read(&binary_path)?;
 
-    // Upload versioned binary
-    let versioned_key = format!("{}/luffy-{}", CONFIG.ota.release_path, version);
+    // Extract just the architecture part from the target triple
+    let arch = target.split('-').next().unwrap_or("unknown");
+
+    // Use the shortened architecture name in file paths
+    let versioned_key = format!("{}/luffy-{}-{}", CONFIG.ota.release_path, version, arch);
     upload_to_s3(&client, binary.clone(), &versioned_key).await?;
 
-    // Upload latest binary
-    let latest_key = format!("{}/luffy-latest", CONFIG.ota.release_path);
+    // Update latest key as well
+    let latest_key = format!("{}/luffy-latest-{}", CONFIG.ota.release_path, arch);
     upload_to_s3(&client, binary, &latest_key).await?;
 
     // Create and upload release info
@@ -60,10 +65,10 @@ async fn main() -> Result<()> {
         minimum_required_version: "0.1.0".to_string(),
     };
     let release_info_json = serde_json::to_vec(&release_info)?;
-    let release_info_key = format!("{}/release-info.json", CONFIG.ota.release_path);
+    let release_info_key = format!("{}/release-info-{}.json", CONFIG.ota.release_path, arch);
     upload_to_s3(&client, release_info_json, &release_info_key).await?;
 
-    println!("✅ Release {version} uploaded successfully!");
+    println!("✅ Release {version} for {target} uploaded successfully!");
     println!("Files uploaded:");
     println!("- s3://{}/{}", CONFIG.ota.s3_bucket, versioned_key);
     println!("- s3://{}/{}", CONFIG.ota.s3_bucket, latest_key);

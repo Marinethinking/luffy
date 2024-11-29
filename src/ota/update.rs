@@ -1,8 +1,11 @@
 use crate::config::CONFIG;
 use anyhow::{anyhow, Result};
 
+use crate::aws_client::AwsClient;
+use futures_util::StreamExt;
+use indicatif::{ProgressBar, ProgressStyle};
 use std::{fs, path::PathBuf};
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 pub struct OtaUpdater {
     backup_path: PathBuf,
@@ -30,16 +33,59 @@ impl OtaUpdater {
         info!("Downloading update version {}", version);
 
         let download_path = self.backup_path.join(format!("download_v{}", version));
-        let file = fs::File::create(&download_path)?;
-        let download_url = &format!("s3://{}/{}", CONFIG.ota.s3_bucket, CONFIG.ota.bin_name);
-        self_update::Download::from_url(download_url)
-            .set_header(reqwest::header::ACCEPT, "application/octet-stream".parse()?)
-            .download_to(file)?;
+
+        // Get AWS client instance
+        let aws_client = AwsClient::instance().await;
+
+        // Construct the correct S3 key
+        let s3_key = format!(
+            "{}/luffy-{}-{}",
+            CONFIG.ota.release_path, version, "aarch64"
+        );
+
+        // Get object size first
+        let head_object = aws_client
+            .s3()
+            .head_object()
+            .bucket(&CONFIG.ota.s3_bucket)
+            .key(&s3_key)
+            .send()
+            .await?;
+
+        let total_size = head_object.content_length().unwrap() as u64;
+
+        // Create progress bar
+        let pb = ProgressBar::new(total_size);
+        pb.set_style(ProgressStyle::default_bar()
+            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+            .unwrap()
+            .progress_chars("#>-"));
+
+        // Download with progress
+        let mut response = aws_client
+            .s3()
+            .get_object()
+            .bucket(&CONFIG.ota.s3_bucket)
+            .key(&s3_key)
+            .send()
+            .await?;
+
+        let mut file = fs::File::create(&download_path)?;
+        let mut downloaded: u64 = 0;
+
+        while let Some(chunk) = response.body.try_next().await? {
+            downloaded += chunk.len() as u64;
+            pb.set_position(downloaded);
+            std::io::Write::write_all(&mut file, &chunk)?;
+        }
+
+        pb.finish_with_message("Download completed");
 
         if !download_path.exists() {
             return Err(anyhow!("Failed to download update"));
         }
 
+        info!("Update downloaded successfully to {:?}", download_path);
         Ok(download_path)
     }
 

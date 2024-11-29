@@ -9,6 +9,9 @@
 <body>
     <div class="container">
         <h1>System Dashboard</h1>
+        <div class="version-info">
+            <span>Version: {{ status.version }}</span>
+        </div>
 
         <div class="dashboard-grid">
             <!-- Vehicle Status Card -->
@@ -116,6 +119,9 @@
                     brokerStatus.className = `status-indicator ${data.broker_connected ? 'connected' : 'disconnected'}`;
                     brokerStatus.textContent = data.broker_connected ? 'Connected' : 'Disconnected';
                 }
+
+                // Add version update
+                document.querySelector('.version-info span').textContent = `Version: ${data.version}`;
             } catch (error) {
                 console.error('Error updating UI:', error);
             }

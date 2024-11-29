@@ -1,6 +1,6 @@
 [package]
 name = "luffy"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
@@ -10,6 +10,7 @@ aws-config = "1.5"
 aws-sdk-dynamodb = "1.54"
 aws-sdk-lambda = "1.59"
 aws-sdk-secretsmanager = "1.53"
+aws-sdk-s3 = "1.63.0"
 axum = "0.7"
 config = "0.14"
 dirs = "5.0"
@@ -31,7 +32,8 @@ self_update = "0.41"
 semver = "1.0"
 reqwest = { version = "0.12", features = ["json"] }
 chrono = "0.4.38"
-aws-sdk-s3 = "1.63.0"
+indicatif = "0.17.9"
+futures-util = "0.3.31"
 
 [dev-dependencies]
 tempfile = "3.14"

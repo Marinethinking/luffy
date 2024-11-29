@@ -60,3 +60,10 @@
     background: #2196F3;
     color: white;
 }
+
+.version-info {
+    text-align: center;
+    color: #666;
+    margin-bottom: 20px;
+    font-size: 0.9em;
+}

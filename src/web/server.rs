@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 
-use axum::{routing::get, Router};
+use axum::Router;
 use tower_http::services::ServeDir;
 
 use super::index_page;

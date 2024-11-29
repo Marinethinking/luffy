@@ -1,8 +1,8 @@
-use anyhow::{Result, anyhow};
+use crate::config::CONFIG;
+use anyhow::{anyhow, Result};
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
-use crate::config::CONFIG;
+use tracing::warn;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VehicleInfo {
@@ -55,10 +55,10 @@ impl VersionManager {
         // TODO: Implement AWS IoT Shadow subscription for version updates
         // The vehicle should subscribe to a shadow topic like:
         // $aws/things/{vehicle_id}/shadow/name/version/update
-        
+
         // For now, we'll just check the version endpoint
         let release_info = self.fetch_latest_release_info().await?;
-        
+
         if self.is_update_applicable(&release_info)? {
             Ok(Some(release_info))
         } else {
@@ -81,14 +81,17 @@ impl VersionManager {
 
     fn is_update_applicable(&self, release_info: &ReleaseInfo) -> Result<bool> {
         let release_version = Version::parse(&release_info.version)?;
-        
+
         // Check if current version is lower than release version
         if release_version <= self.current_version {
             return Ok(false);
         }
 
         // Check subscription level requirement
-        match (&self.vehicle_info.subscription, &release_info.required_subscription) {
+        match (
+            &self.vehicle_info.subscription,
+            &release_info.required_subscription,
+        ) {
             (SubscriptionType::Enterprise, _) => (),
             (SubscriptionType::Premium, SubscriptionType::Basic | SubscriptionType::Premium) => (),
             (SubscriptionType::Basic, SubscriptionType::Basic) => (),
@@ -117,4 +120,7 @@ impl VersionManager {
     pub fn get_vehicle_info(&self) -> &VehicleInfo {
         &self.vehicle_info
     }
-} 
+}
+
+/// Current version of the Luffy software
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");

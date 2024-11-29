@@ -4,9 +4,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use config;
-use rumqttd::local::LinkRx;
 use rumqttd::{Broker, Config, Notification};
-use tokio::sync::mpsc;
 use tracing::{debug, error, info};
 
 pub struct MqttBroker {

@@ -38,7 +38,7 @@ port = 9000
 
 [ota]
 check_interval = 3600  # Check every hour (in seconds)
-version_check_url = "https://api.example.com/latest-version"  # Replace with your version check endpoint
+version_check_url = "https://s3.ca-central-1.amazonaws.com/luffy.dev/release/release-info-aarch64.json"
 s3_bucket = "luffy.dev"
 release_path = "release"
 bin_name = "luffy"

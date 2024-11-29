@@ -7,7 +7,7 @@ use luffy::mav_server::MavlinkServer;
 use luffy::web::server::WebServer;
 use tokio::signal;
 use tokio::sync::broadcast;
-use tracing::{error, info, Level};
+use tracing::{error, info};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
