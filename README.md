@@ -75,7 +75,7 @@ Add to settings.json (Cmd/Ctrl + ,):
 
 ## Resources
 - [AWS SDK for Rust Documentation](https://docs.aws.amazon.com/sdk-for-rust/latest/dg/welcome.html)
-- [AWS SDK Examples](https://github.com/awsdocs/aws-doc-sdk-examples/tree/main/rustv1)
+- [AWS SDK Examples](https://github.com/awsdocs/aws-doc-sdk-examples/tree/main/rustv1) 
 
 
 ## Installation
