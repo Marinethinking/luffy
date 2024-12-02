@@ -29,7 +29,7 @@ jobs:
           mkdir -p target/debian/etc/luffy
           mkdir -p target/debian/etc/systemd/system
           cp config/dev.toml target/debian/etc/luffy/
-          cp scripts/luffy.service target/debian/etc/systemd/system/
+          cp scripts/luffy.service target/debian/etc/systemd/system/luffy.service
       
       - name: Build and package
         run: |
