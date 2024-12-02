@@ -65,7 +65,7 @@ Add to settings.json (Cmd/Ctrl + ,):
   ```
 
 ### Release Process
-1. Change version in `Cargo.toml`
+1. Change version to a.b.c in `Cargo.toml`
 2. Check release config [OTA] in `config/dev.toml`
 3. Commit and push changes to github
 4. git tag va.b.c
