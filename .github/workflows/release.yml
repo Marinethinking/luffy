@@ -21,11 +21,15 @@ jobs:
       - name: Add ARM64 repository
         run: |
           sudo dpkg --add-architecture arm64
+          sudo sed -i '/\[arch=arm64\]/d' /etc/apt/sources.list
           sudo tee /etc/apt/sources.list.d/arm64.list << EOF
-          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted
-          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted
-          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-backports main restricted universe multiverse
           EOF
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
           sudo apt-get update
       
       - name: Install dependencies
