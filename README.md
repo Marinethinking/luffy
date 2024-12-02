@@ -71,7 +71,13 @@ Add to settings.json (Cmd/Ctrl + ,):
 4. git tag va.b.c
 5. git push origin va.b.c
 
-
+If release CI failed, change ci script and re-release:
+   ```bash
+   git tag -d v0.2.1  # delete old tag locally
+   git push origin :refs/tags/v0.2.1  # delete old tag remotely
+   git tag v0.2.1
+   git push origin v0.2.1
+   ```
 
 ## Resources
 - [AWS SDK for Rust Documentation](https://docs.aws.amazon.com/sdk-for-rust/latest/dg/welcome.html)
