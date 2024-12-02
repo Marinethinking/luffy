@@ -2,6 +2,7 @@
 name = "luffy"
 version = "0.2.1"
 edition = "2021"
+authors = ["Liang Huang <liang.huang@marinethinking.com>"]
 description = "A smart vehicle onboard program that provides network connectivity and web-based monitoring/control interface"
 license = "MIT"
 
@@ -47,4 +48,19 @@ name = "luffy"
 path = "src/lib.rs"
 
 [package.metadata.deb]
-maintainer = "Liang Huang<liang.huang@marinethinking.com>"
+maintainer = "Liang Huang <liang.huang@marinethinking.com>"
+copyright = "2024, Marine Thinking"
+license-file = ["LICENSE", "4"]
+extended-description = """
+A smart vehicle onboard program that provides network connectivity 
+and web-based monitoring/control interface.
+Features include MQTT broker, web server, telemetry, and command control.
+"""
+depends = "$auto"
+section = "utility"
+priority = "optional"
+assets = [
+    ["target/release/luffy", "usr/bin/", "755"],
+    ["config/dev.toml", "etc/luffy/config.toml", "644"],
+    ["scripts/luffy.service", "etc/systemd/system/luffy.service", "644"],
+]
