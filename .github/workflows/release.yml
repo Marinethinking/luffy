@@ -24,6 +24,12 @@ jobs:
           sudo apt-get install -y gcc-aarch64-linux-gnu
           cargo install cargo-deb
       
+      - name: Prepare files
+        run: |
+          mkdir -p target/debian/etc/luffy
+          cp config/dev.toml target/debian/etc/luffy/
+          cp scripts/luffy.service target/debian/etc/systemd/system/
+      
       - name: Build and package
         run: |
           cargo build --release --target aarch64-unknown-linux-gnu

@@ -9,7 +9,7 @@ Group=luffy
 ExecStart=/usr/bin/luffy
 Restart=always
 WorkingDirectory=/etc/luffy
-Environment="AWS_SHARED_CREDENTIALS_FILE=/etc/luffy/.aws/credentials"
+Environment="AWS_SHARED_CREDENTIALS_FILE=≈/etc/luffy/.aws/credentials"
 
 [Install]
 WantedBy=multi-user.target
