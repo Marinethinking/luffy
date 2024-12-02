@@ -18,11 +18,10 @@ jobs:
           target: aarch64-unknown-linux-gnu
           override: true
       
-      - name: Install cross-compilation dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
-          cargo install cargo-deb
+          sudo apt-get install -y gcc-aarch64-linux-gnu pkg-config libssl-dev
       
       - name: Prepare files
         run: |
