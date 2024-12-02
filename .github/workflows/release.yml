@@ -18,6 +18,9 @@ jobs:
           target: aarch64-unknown-linux-gnu
           override: true
       
+      - name: Install cargo-deb
+        run: cargo install cargo-deb
+      
       - name: Configure ARM64 repositories
         run: |
           sudo dpkg --add-architecture arm64
