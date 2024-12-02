@@ -1,7 +1,7 @@
 [package]
 name = "luffy"
-version = "0.3.0"
-edition = "2024"
+version = "0.2.1"
+edition = "2021"
 description = "A smart vehicle onboard program that provides network connectivity and web-based monitoring/control interface"
 license = "MIT"
 
