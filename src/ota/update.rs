@@ -2,8 +2,8 @@ use crate::config::CONFIG;
 use anyhow::{anyhow, Result};
 
 use crate::aws_client::AwsClient;
-use futures_util::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
+use std::process::Command;
 use std::{fs, path::PathBuf};
 use tracing::{info, warn};
 
@@ -32,7 +32,9 @@ impl OtaUpdater {
     pub async fn download_update(&self, version: &str) -> Result<PathBuf> {
         info!("Downloading update version {}", version);
 
-        let download_path = self.backup_path.join(format!("download_v{}", version));
+        let download_path = self
+            .backup_path
+            .join(format!("download_v{}.tar.gz", version));
 
         // Get AWS client instance
         let aws_client = AwsClient::instance().await;
@@ -86,7 +88,27 @@ impl OtaUpdater {
         }
 
         info!("Update downloaded successfully to {:?}", download_path);
-        Ok(download_path)
+
+        // Extract the package
+        let extract_dir = self.backup_path.join(format!("update_v{}", version));
+        fs::create_dir_all(&extract_dir)?;
+
+        let status = Command::new("tar")
+            .args(["xzf", &download_path.to_string_lossy()])
+            .current_dir(&extract_dir)
+            .status()?;
+
+        if !status.success() {
+            return Err(anyhow!("Failed to extract update package"));
+        }
+
+        // The extracted binary will be in a subdirectory
+        let package_dir = fs::read_dir(&extract_dir)?
+            .filter_map(Result::ok)
+            .find(|entry| entry.file_name().to_string_lossy().contains("luffy-"))
+            .ok_or_else(|| anyhow!("Cannot find extracted package directory"))?;
+
+        Ok(package_dir.path())
     }
 
     pub async fn create_backup(&self, version: &str) -> Result<PathBuf> {
@@ -99,14 +121,35 @@ impl OtaUpdater {
         Ok(backup_file)
     }
 
-    pub async fn apply_update(&self, update_path: &PathBuf) -> Result<()> {
+    pub async fn apply_update(&self, update_dir: &PathBuf) -> Result<()> {
         let current_exe = std::env::current_exe()?;
+        let update_binary = update_dir.join("luffy");
+        let update_config = update_dir.join("config");
 
         // Stop the service
         self.stop_service().await?;
 
         // Replace the executable
-        fs::copy(update_path, &current_exe)?;
+        fs::copy(update_binary, &current_exe)?;
+
+        // Update config files if they exist
+        if update_config.exists() {
+            let config_dir = current_exe
+                .parent()
+                .ok_or_else(|| anyhow!("Cannot get parent directory"))?
+                .join("config");
+
+            if !config_dir.exists() {
+                fs::create_dir_all(&config_dir)?;
+            }
+
+            // Copy config files
+            for entry in fs::read_dir(update_config)? {
+                let entry = entry?;
+                let dest = config_dir.join(entry.file_name());
+                fs::copy(entry.path(), dest)?;
+            }
+        }
 
         // Set executable permissions on Unix systems
         #[cfg(unix)]

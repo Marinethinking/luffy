@@ -1,7 +1,9 @@
 [package]
 name = "luffy"
-version = "0.2.0"
-edition = "2021"
+version = "0.3.0"
+edition = "2024"
+description = "A smart vehicle onboard program that provides network connectivity and web-based monitoring/control interface"
+license = "MIT"
 
 [dependencies]
 anyhow = "1.0"
@@ -33,7 +35,9 @@ semver = "1.0"
 reqwest = { version = "0.12", features = ["json"] }
 chrono = "0.4.38"
 indicatif = "0.17.9"
-futures-util = "0.3.31"
+octocrab = "0.42.1"
+bytes = "1.9.0"
+
 
 [dev-dependencies]
 tempfile = "3.14"
@@ -42,12 +46,6 @@ tempfile = "3.14"
 name = "luffy"
 path = "src/lib.rs"
 
-[features]
-dev-tools = []
 
-[[bin]]
-name = "release"
-path = "src/bin/release.rs"
-required-features = ["dev-tools"]
 
  
