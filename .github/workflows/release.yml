@@ -27,9 +27,9 @@ jobs:
       - name: Prepare files
         run: |
           mkdir -p target/debian/etc/luffy
-          mkdir -p target/debian/etc/systemd/system
+          mkdir -p target/debian/etc/systemd
           cp config/dev.toml target/debian/etc/luffy/
-          cp scripts/luffy.service target/debian/etc/systemd/system/luffy.service
+          cp scripts/luffy.service target/debian/etc/systemd/luffy.service
       
       - name: Build and package
         run: |
