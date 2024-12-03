@@ -1,4 +1,3 @@
-use crate::config::CONFIG;
 use anyhow::{anyhow, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::{fs, path::PathBuf};

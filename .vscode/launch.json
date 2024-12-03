@@ -8,9 +8,10 @@
             "cargo": {
                 "args": ["build"]
             },
-            "preLaunchTask": "rust: cargo build",
             "args": [],
             "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/target/debug/luffy",
+            "preLaunchTask": "cargo build",
             "env": {
                 "RUST_LOG": "debug",
                 "RUST_BACKTRACE": "1"

@@ -1,8 +1,8 @@
 [feature]
-local_iot = true
-remote_iot = true
-broker = true
-mavlink = true
+local_iot = false
+remote_iot = false
+broker = false
+mavlink = false
 ota = true
 
 [general]
@@ -42,7 +42,5 @@ check_interval = 3600  # when strategy is "Auto"
 allow_downgrade = false
 backup_count = 2
 
-[ota.subscription]
-enabled = false  # true or false
 
 

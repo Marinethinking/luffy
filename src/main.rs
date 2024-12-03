@@ -72,12 +72,19 @@ async fn main() -> Result<()> {
         iot_handle,
         web_handle,
         mqtt_handle,
+        ota_handle,
         shutdown_signal
     );
 
     for (result, name) in [results.0, results.1, results.2, results.3]
         .into_iter()
-        .zip(["MAVLink server", "IoT server", "Web server", "MQTT broker"])
+        .zip([
+            "MAVLink server",
+            "IoT server",
+            "Web server",
+            "MQTT broker",
+            "OTA server",
+        ])
     {
         if let Err(e) = result {
             error!("{} join error: {}", name, e);

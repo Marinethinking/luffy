@@ -74,7 +74,7 @@ impl MavlinkServer {
         Ok(())
     }
 
-    async fn handle_mavlink_message(&self, header: MavHeader, message: MavMessage) -> Result<()> {
+    async fn handle_mavlink_message(&self, _header: MavHeader, message: MavMessage) -> Result<()> {
         match message {
             MavMessage::ATTITUDE(attitude) => {
                 self.vehicle.update_attitude(

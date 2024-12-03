@@ -1,12 +1,11 @@
 use crate::config::CONFIG;
-use anyhow::anyhow;
-use anyhow::Result;
+use crate::ota::update::OtaUpdater;
+use anyhow::{anyhow, Result};
 use reqwest;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use tokio::time::{interval, Duration};
-use tracing::{info, warn, error};
-use crate::ota::update::OtaUpdater;
+use tracing::{error, info, warn};
 
 pub const GITHUB_API_URL: &str = "https://api.github.com/repos/Marinethinking/luffy/releases";
 pub const RELEASE_URL: &str = "https://github.com/Marinethinking/luffy/releases/download";
@@ -17,13 +16,6 @@ pub enum UpgradeStrategy {
     Auto,     // Automatically check and upgrade
     Manual,   // Wait for upstream command
     Disabled, // No upgrades allowed
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-pub enum SubscriptionType {
-    Basic,
-    Premium,
-    Enterprise,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -48,7 +40,7 @@ impl VersionManager {
                 self.start_auto_update_task().await?;
             }
             UpgradeStrategy::Manual => {
-                self.start_manual_update_listener().await?;
+                info!("Manual update mode - waiting for upstream commands");
             }
             UpgradeStrategy::Disabled => {
                 info!("Version upgrades are disabled");
@@ -77,13 +69,6 @@ impl VersionManager {
         Ok(())
     }
 
-    async fn start_manual_update_listener(&self) -> Result<()> {
-        info!("Starting manual update listener");
-        // TODO: Implement AWS IoT shadow update listener
-        // This would listen for desired version changes in the device shadow
-        Ok(())
-    }
-
     pub async fn get_latest_version(&self) -> Result<String> {
         let client = reqwest::Client::new();
         let response = client
@@ -94,7 +79,6 @@ impl VersionManager {
 
         let releases: Vec<GitHubRelease> = response.json().await?;
 
-        // Find the latest non-draft, non-prerelease version
         let latest = releases
             .into_iter()
             .find(|r| !r.draft && !r.prerelease)
@@ -104,10 +88,8 @@ impl VersionManager {
     }
 
     async fn check_and_apply_updates(&self) -> Result<()> {
-        if !self.verify_subscription().await? {
-            warn!("Subscription verification failed, skipping update check");
-            return Ok(());
-        }
+        // TODO: Implement subscription verification with upstream service
+        // For now, we'll proceed without verification
 
         let latest_version = self.get_latest_version().await?;
         let current = Version::parse(&self.current_version)?;
@@ -115,14 +97,10 @@ impl VersionManager {
 
         if latest > current {
             info!("New version available: {} -> {}", current, latest);
-            
-            // Initialize the OTA updater
+
             let updater = OtaUpdater::new("luffy")?;
-            
-            // Create backup before updating
             let backup_path = updater.create_backup(&self.current_version).await?;
-            
-            // Download and apply the update
+
             match updater.download_update(&latest_version).await {
                 Ok(update_path) => {
                     if let Err(e) = updater.apply_update(&update_path).await {
@@ -132,8 +110,10 @@ impl VersionManager {
                         }
                     } else {
                         info!("Update successful");
-                        // Cleanup old backups
-                        if let Err(e) = updater.cleanup_old_backups(CONFIG.ota.backup_count as usize).await {
+                        if let Err(e) = updater
+                            .cleanup_old_backups(CONFIG.ota.backup_count as usize)
+                            .await
+                        {
                             warn!("Failed to cleanup old backups: {}", e);
                         }
                     }
@@ -149,54 +129,14 @@ impl VersionManager {
         Ok(())
     }
 
-    async fn verify_subscription(&self) -> Result<bool> {
-        // TODO: Implement subscription verification
-        // This would check with a license server or similar
-        // For now, always return true
-        Ok(true)
-    }
-
     pub fn get_current_version(&self) -> &str {
         &self.current_version
     }
-
-    pub async fn handle_shadow_update(&self, desired_version: &str) -> Result<()> {
-        if self.strategy != UpgradeStrategy::Manual {
-            warn!("Received shadow update but not in manual update mode");
-            return Ok(());
-        }
-
-        // TODO: Implement shadow update handling
-        // 1. Verify version is valid
-        // 2. Check subscription
-        // 3. Trigger update process
-
-        Ok(())
-    }
-}
-
-// Update config structure
-#[derive(Debug, Serialize, Deserialize)]
-pub struct OtaConfig {
-    pub strategy: UpgradeStrategy,
-    pub check_interval_secs: u64,
-    pub allow_downgrade: bool,
-    pub backup_count: usize,
-    pub subscription: SubscriptionConfig,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SubscriptionConfig {
-    #[serde(rename = "type")]
-    pub type_: SubscriptionType,
 }
 
 #[derive(Debug, Deserialize)]
 struct GitHubRelease {
     tag_name: String,
-    name: Option<String>,
     draft: bool,
     prerelease: bool,
-    created_at: String,
-    published_at: Option<String>,
 }

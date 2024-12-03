@@ -1,8 +1,8 @@
+use crate::ota::version::UpgradeStrategy;
 use anyhow::Result;
 use config;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
-use crate::ota::version::UpgradeStrategy;
 
 pub static CONFIG: Lazy<Config> =
     Lazy::new(|| Config::load().expect("Failed to load configuration"));
@@ -81,7 +81,6 @@ pub struct OtaConfig {
     pub check_interval: u64,
     pub allow_downgrade: bool,
     pub backup_count: i32,
-    pub subscription: SubscriptionConfig,
 }
 
 #[derive(Debug, Deserialize)]
