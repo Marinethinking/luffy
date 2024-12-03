@@ -47,8 +47,11 @@ jobs:
         run: |
           mkdir -p target/debian/etc/luffy
           mkdir -p target/debian/etc/systemd
+          mkdir -p target/debian/DEBIAN
           cp config/dev.toml target/debian/etc/luffy/
           cp scripts/luffy.service target/debian/etc/systemd/luffy.service
+          cp scripts/postinst target/debian/DEBIAN/postinst
+          chmod 755 target/debian/DEBIAN/postinst
       
       - name: Build and package
         env:
