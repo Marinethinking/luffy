@@ -14,8 +14,9 @@ jobs:
       - name: Configure ARM64 repositories
         run: |
           apt-get update
-          apt-get install -y sudo
+          apt-get install -y sudo gnupg2 ubuntu-keyring
           dpkg --add-architecture arm64
+          apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 871920D1991BC93C
           echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy main restricted universe multiverse" >> /etc/apt/sources.list
           echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy-updates main restricted universe multiverse" >> /etc/apt/sources.list
           echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy-security main restricted universe multiverse" >> /etc/apt/sources.list
