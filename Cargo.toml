@@ -64,3 +64,8 @@ assets = [
     ["config/dev.toml", "etc/luffy/", "644"],
     ["scripts/luffy.service", "etc/systemd/system/", "644"],
 ]
+
+[profile.release]
+lto = 'thin'  # Faster than full LTO
+codegen-units = 16  # More parallel compilation
+opt-level = 2  # Good balance of speed vs size
