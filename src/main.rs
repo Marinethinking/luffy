@@ -4,6 +4,7 @@ use luffy::broker::MqttBroker;
 use luffy::config::CONFIG;
 use luffy::iot::server::IotServer;
 use luffy::mav_server::MavlinkServer;
+use luffy::ota::VersionManager;
 use luffy::web::server::WebServer;
 use tokio::signal;
 use tokio::sync::broadcast;
@@ -42,6 +43,13 @@ async fn main() -> Result<()> {
         spawn_iot_server(shutdown_tx.subscribe()).await
     } else {
         info!("IoT server disabled in config, skipping...");
+        tokio::spawn(async {})
+    };
+
+    let ota_handle = if CONFIG.feature.ota {
+        spawn_ota_server(shutdown_tx.subscribe()).await
+    } else {
+        info!("OTA server disabled in config, skipping...");
         tokio::spawn(async {})
     };
 
@@ -151,6 +159,14 @@ async fn spawn_web_server(mut shutdown: broadcast::Receiver<()>) -> tokio::task:
                 server.stop().await;
             }
         }
+    })
+}
+
+async fn spawn_ota_server(mut shutdown: broadcast::Receiver<()>) -> tokio::task::JoinHandle<()> {
+    info!("Starting OTA server...");
+    let manager = VersionManager::new().unwrap();
+    tokio::spawn(async move {
+        manager.start_version_management().await.unwrap();
     })
 }
 

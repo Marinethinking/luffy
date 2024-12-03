@@ -124,30 +124,6 @@ impl AwsClient {
         Ok(())
     }
 
-    pub async fn upload_to_s3(&self, data: Vec<u8>, key: &str) -> Result<()> {
-        self.s3_client
-            .put_object()
-            .bucket(&CONFIG.ota.s3_bucket)
-            .key(key)
-            .body(data.into())
-            .send()
-            .await?;
-
-        Ok(())
-    }
-
-    pub async fn download_from_s3(&self, key: &str) -> Result<Vec<u8>> {
-        let response = self
-            .s3_client
-            .get_object()
-            .bucket(&CONFIG.ota.s3_bucket)
-            .key(key)
-            .send()
-            .await?;
-
-        Ok(response.body.collect().await?.into_bytes().to_vec())
-    }
-
     pub fn s3(&self) -> &aws_sdk_s3::Client {
         &self.s3_client
     }

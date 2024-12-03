@@ -33,11 +33,12 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1.11", features = ["v4"] }
 self_update = "0.41"
 semver = "1.0"
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", features = ["stream"] }
 chrono = "0.4.38"
 indicatif = "0.17.9"
 octocrab = "0.42.1"
 bytes = "1.9.0"
+futures-util = "0.3"
 
 
 [dev-dependencies]
