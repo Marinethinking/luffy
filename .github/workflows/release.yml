@@ -8,20 +8,28 @@ on:
 jobs:
   setup:
     runs-on: ubuntu-latest
+    container: 
+      image: rust:1.75-slim
     steps:
       - name: Configure ARM64 repositories
         run: |
-          sudo dpkg --add-architecture arm64
-          sudo cp /etc/apt/sources.list /etc/apt/sources.list.bak
-          sudo tee /etc/apt/sources.list << EOF
-          deb [arch=amd64] http://azure.archive.ubuntu.com/ubuntu/ jammy main restricted universe multiverse
-          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy main restricted universe multiverse
-          EOF
-          sudo apt-get update
+          apt-get update
+          apt-get install -y sudo
+          dpkg --add-architecture arm64
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy main restricted universe multiverse" >> /etc/apt/sources.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy-updates main restricted universe multiverse" >> /etc/apt/sources.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy-security main restricted universe multiverse" >> /etc/apt/sources.list
+          apt-get update
       
       - name: Install dependencies
         run: |
-          sudo apt-get install -y gcc-aarch64-linux-gnu pkg-config libssl-dev:arm64 binutils-aarch64-linux-gnu
+          apt-get install -y --no-install-recommends \
+            gcc-aarch64-linux-gnu \
+            pkg-config \
+            libssl-dev:arm64 \
+            binutils-aarch64-linux-gnu \
+            ca-certificates \
+            libc6-dev-arm64-cross
           cargo install cargo-deb
 
   build:
