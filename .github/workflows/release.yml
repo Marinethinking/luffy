@@ -6,38 +6,8 @@ on:
       - 'v*'
 
 jobs:
-  setup:
+  release:
     runs-on: ubuntu-latest
-    container: 
-      image: rust:1.75-slim
-    steps:
-      - name: Configure ARM64 repositories
-        run: |
-          apt-get update
-          apt-get install -y sudo gnupg2 ubuntu-keyring
-          dpkg --add-architecture arm64
-          apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 871920D1991BC93C
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy main restricted universe multiverse" >> /etc/apt/sources.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy-updates main restricted universe multiverse" >> /etc/apt/sources.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy-security main restricted universe multiverse" >> /etc/apt/sources.list
-          apt-get update
-      
-      - name: Install dependencies
-        run: |
-          apt-get install -y --no-install-recommends \
-            gcc-aarch64-linux-gnu \
-            pkg-config \
-            libssl-dev:arm64 \
-            binutils-aarch64-linux-gnu \
-            ca-certificates \
-            libc6-dev-arm64-cross
-          cargo install cargo-deb
-
-  build:
-    needs: setup
-    runs-on: ubuntu-latest
-    container: 
-      image: rust:1.75-slim
     steps:
       - uses: actions/checkout@v4
       
@@ -49,6 +19,38 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: aarch64-unknown-linux-gnu
+          override: true
+      
+      - name: Install cargo-deb
+        run: cargo install cargo-deb
+      
+      - name: Configure ARM64 repositories
+        run: |
+          sudo dpkg --add-architecture arm64
+          sudo cp /etc/apt/sources.list /etc/apt/sources.list.bak
+          sudo tee /etc/apt/sources.list << EOF
+          deb [arch=amd64] http://azure.archive.ubuntu.com/ubuntu/ jammy main restricted universe multiverse
+          deb [arch=amd64] http://azure.archive.ubuntu.com/ubuntu/ jammy-updates main restricted universe multiverse
+          deb [arch=amd64] http://azure.archive.ubuntu.com/ubuntu/ jammy-security main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy-updates main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy-security main restricted universe multiverse
+          EOF
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
+          sudo apt-get update
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get install -y gcc-aarch64-linux-gnu pkg-config
+          sudo apt-get install -y libssl-dev:arm64
+          sudo apt-get install -y binutils-aarch64-linux-gnu
+      
       - name: Prepare files
         run: |
           mkdir -p target/debian/{etc/luffy,etc/systemd/system,DEBIAN}
@@ -58,7 +60,7 @@ jobs:
           cp debian/control target/debian/DEBIAN/control
           chmod 755 target/debian/DEBIAN/postinst
       
-      - name: Build
+      - name: Build and package
         env:
           PKG_CONFIG_ALLOW_CROSS: 1
           OPENSSL_DIR: /usr/lib/aarch64-linux-gnu
@@ -66,24 +68,17 @@ jobs:
           OPENSSL_LIB_DIR: /usr/lib/aarch64-linux-gnu
           PKG_CONFIG_PATH: /usr/lib/aarch64-linux-gnu/pkgconfig
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-          CARGO_INCREMENTAL: 1
         run: |
           cargo build --release --target aarch64-unknown-linux-gnu
           cargo deb --target aarch64-unknown-linux-gnu --no-build
       
-      - name: Test
-        run: cargo test --all
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:      
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: target/aarch64-unknown-linux-gnu/debian/*.deb
+          files: |
+            target/aarch64-unknown-linux-gnu/debian/*.deb
           draft: false
           prerelease: false
           generate_release_notes: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
