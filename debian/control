@@ -8,4 +8,4 @@ Description: Smart vehicle onboard program
  A smart vehicle onboard program that provides network connectivity 
  and web-based monitoring/control interface.
  Features include MQTT broker, web server, telemetry, and command control.
-Depends: ${shlibs:Depends}, ${misc:Depends} 
+Depends: ${shlibs:Depends}, ${misc:Depends}, libssl1.1 
