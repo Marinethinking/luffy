@@ -58,9 +58,9 @@ Features include MQTT broker, web server, telemetry, and command control.
 depends = "$auto"
 section = "utility"
 priority = "optional"
+maintainer-scripts = "debian/"
 assets = [
     ["target/release/luffy", "usr/bin/", "755"],
-    ["config/dev.toml", "etc/luffy/config.toml", "644"],
-    ["scripts/luffy.service", "etc/systemd/system/luffy.service", "644"],
-    ["scripts/postinst", "DEBIAN/postinst", "755"],
+    ["config/dev.toml", "etc/luffy/", "644"],
+    ["scripts/luffy.service", "etc/systemd/system/", "644"],
 ]
