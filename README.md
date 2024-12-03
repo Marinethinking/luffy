@@ -8,6 +8,10 @@ A smart vehicle onboard program that provides network connectivity and web-based
 - **Web Server**: Web interface for monitoring and control
 - **Telemetry**: Data publishing to both local and remote MQTT brokers
 - **Command**: Command subscription from upstream node to vehicle
+- **OTA**: Over-the-air update for the vehicle
+
+## Installation
+- download latest release from [here](https://github.com/marinethinking/luffy/releases)
 
 ## Development Setup
 
@@ -73,10 +77,10 @@ Add to settings.json (Cmd/Ctrl + ,):
 
 If release CI failed, change ci script and re-release:
    ```bash
-   git tag -d v0.2.1  # delete old tag locally
-   git push origin :refs/tags/v0.2.1  # delete old tag remotely
-   git tag v0.2.1
-   git push origin v0.2.1
+   git tag -d v0.2.2  # delete old tag locally
+   git push origin :refs/tags/v0.2.2  # delete old tag remotely
+   git tag v0.2.2
+   git push origin v0.2.2
    ```
 
 ## Resources
@@ -87,7 +91,5 @@ If release CI failed, change ci script and re-release:
 ## Installation
 - Prerequisite:
   - AWS credentials on target machine, with minimum required permission:
-    - `s3:GetObject`
-    - `s3:PutObject`
     - `lambda:InvokeFunction`  
 
