@@ -9,7 +9,7 @@ license = "MIT"
 [dependencies]
 anyhow = "1.0"
 askama = "0.12"
-aws-config = "1.5"
+aws-config = {version = "1.5", features = ["rustls"]}
 aws-sdk-dynamodb = {version = "1.54", features = ["rustls"]}
 aws-sdk-lambda = {version = "1.59", features = ["rustls"]}
 aws-sdk-s3 = {version = "1.63.0", features = ["rustls"]}
@@ -32,7 +32,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1.11", features = ["v4"] }
 self_update = "0.41"
 semver = "1.0"
-reqwest = { version = "0.12", features = ["stream"] }
+reqwest = { version = "0.12", features = ["stream","rustls-tls"] }
 chrono = "0.4"
 indicatif = "0.17"
 futures-util = "0.3"
