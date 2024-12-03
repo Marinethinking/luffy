@@ -1,0 +1,27 @@
+version: '3'
+
+services:
+  luffy:
+    image: marinethinking/luffy:latest
+    container_name: luffy
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    volumes:
+      - luffy_config:/etc/luffy/config
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 3600 --cleanup --label-enable
+    environment:
+      - WATCHTOWER_NOTIFICATIONS=shoutrrr
+      - WATCHTOWER_NOTIFICATION_URL=generic://example.com  # Configure your notification URL
+
+volumes:
+  luffy_config: 

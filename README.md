@@ -11,9 +11,36 @@ A smart vehicle onboard program that provides network connectivity and web-based
 - **OTA**: Over-the-air update for the vehicle
 
 ## Installation
-- download latest release from [here](https://github.com/marinethinking/luffy/releases)
--  sudo dpkg -i luffy_0.2.2-1_arm64.deb 
-- check log: sudo journalctl -u luffy -f
+
+### Using Docker
+#### Option 1: Using Docker Compose (Recommended)
+```bash
+# Clone the repository
+git clone https://github.com/marinethinking/luffy.git
+cd luffy/docker
+
+# Start services
+docker compose up -d
+```
+
+#### Option 2: Manual Docker Run
+```bash
+# Pull the image
+docker pull marinethinking/luffy:latest
+
+# Run the container
+docker run -d \
+  --name luffy \
+  --restart unless-stopped \
+  -p 9000:9000 \
+  -v /path/to/config:/etc/luffy/config \
+  marinethinking/luffy:latest
+```
+
+### Checking logs
+```bash
+docker logs -f luffy
+```
 
 ## Development Setup
 

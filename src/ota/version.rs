@@ -1,14 +1,24 @@
 use crate::config::CONFIG;
-use crate::ota::update::OtaUpdater;
 use anyhow::{anyhow, Result};
 use reqwest;
 use semver::Version;
 use serde::{Deserialize, Serialize};
+use std::process::Command;
 use tokio::time::{interval, Duration};
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
-pub const GITHUB_API_URL: &str = "https://api.github.com/repos/Marinethinking/luffy/releases";
-pub const RELEASE_URL: &str = "https://github.com/Marinethinking/luffy/releases/download";
+const DOCKER_HUB_API: &str = "https://hub.docker.com/v2/repositories/marinethinking/luffy/tags";
+
+#[derive(Debug, Deserialize)]
+struct DockerHubResponse {
+    results: Vec<DockerTag>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DockerTag {
+    name: String,
+}
+
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -34,109 +44,74 @@ impl VersionManager {
         })
     }
 
-    pub async fn start_version_management(&self) -> Result<()> {
-        match self.strategy {
-            UpgradeStrategy::Auto => {
-                self.start_auto_update_task().await?;
-            }
-            UpgradeStrategy::Manual => {
-                info!("Manual update mode - waiting for upstream commands");
-            }
-            UpgradeStrategy::Disabled => {
-                info!("Version upgrades are disabled");
-            }
-        }
-        Ok(())
-    }
-
-    async fn start_auto_update_task(&self) -> Result<()> {
-        info!(
-            "Starting auto update task with interval: {:?}",
-            self.check_interval
-        );
-        let mut interval = interval(self.check_interval);
-        let manager = self.clone();
-
-        tokio::spawn(async move {
-            loop {
-                interval.tick().await;
-                if let Err(e) = manager.check_and_apply_updates().await {
-                    warn!("Auto update check failed: {}", e);
-                }
-            }
-        });
-
+    pub async fn update_container(&self, version: &str) -> Result<()> {
+        Command::new("docker")
+            .args(["pull", &format!("marinethinking/luffy:{}", version)])
+            .status()?;
         Ok(())
     }
 
     pub async fn get_latest_version(&self) -> Result<String> {
         let client = reqwest::Client::new();
         let response = client
-            .get(GITHUB_API_URL)
+            .get(DOCKER_HUB_API)
             .header("User-Agent", "luffy-updater")
             .send()
             .await?;
 
-        let releases: Vec<GitHubRelease> = response.json().await?;
+        let tags: DockerHubResponse = response.json().await?;
+        let latest = tags
+            .results
+            .iter()
+            .find(|t| t.name != "latest" && Version::parse(&t.name).is_ok())
+            .ok_or_else(|| anyhow!("No valid version tags found"))?;
 
-        let latest = releases
-            .into_iter()
-            .find(|r| !r.draft && !r.prerelease)
-            .ok_or_else(|| anyhow!("No releases found"))?;
-
-        Ok(latest.tag_name.trim_start_matches('v').to_string())
+        Ok(latest.name.clone())
     }
 
     async fn check_and_apply_updates(&self) -> Result<()> {
-        // TODO: Implement subscription verification with upstream service
-        // For now, we'll proceed without verification
-
         let latest_version = self.get_latest_version().await?;
         let current = Version::parse(&self.current_version)?;
         let latest = Version::parse(&latest_version)?;
 
         if latest > current {
             info!("New version available: {} -> {}", current, latest);
-
-            let updater = OtaUpdater::new("luffy")?;
-            let backup_path = updater.create_backup(&self.current_version).await?;
-
-            match updater.download_update(&latest_version).await {
-                Ok(update_path) => {
-                    if let Err(e) = updater.apply_update(&update_path).await {
-                        warn!("Update failed, rolling back: {}", e);
-                        if let Err(e) = updater.rollback(&backup_path).await {
-                            error!("Rollback failed: {}", e);
-                        }
-                    } else {
-                        info!("Update successful");
-                        if let Err(e) = updater
-                            .cleanup_old_backups(CONFIG.ota.backup_count as usize)
-                            .await
-                        {
-                            warn!("Failed to cleanup old backups: {}", e);
-                        }
-                    }
-                }
-                Err(e) => {
-                    warn!("Failed to download update: {}", e);
-                }
+            match self.update_container(&latest_version).await {
+                Ok(_) => info!("Update successful"),
+                Err(e) => warn!("Update failed: {}", e),
             }
         } else {
             info!("Already running the latest version {}", current);
         }
+        Ok(())
+    }
 
+    pub async fn start_version_management(&self) -> Result<()> {
+        match self.strategy {
+            UpgradeStrategy::Auto => {
+                info!(
+                    "Starting auto update task with interval: {:?}",
+                    self.check_interval
+                );
+                let mut interval = interval(self.check_interval);
+                let manager = self.clone();
+
+                tokio::spawn(async move {
+                    loop {
+                        interval.tick().await;
+                        if let Err(e) = manager.check_and_apply_updates().await {
+                            warn!("Auto update check failed: {}", e);
+                        }
+                    }
+                });
+            }
+            UpgradeStrategy::Manual => info!("Manual update mode - waiting for upstream commands"),
+            UpgradeStrategy::Disabled => info!("Version upgrades are disabled"),
+        }
         Ok(())
     }
 
     pub fn get_current_version(&self) -> &str {
         &self.current_version
     }
-}
-
-#[derive(Debug, Deserialize)]
-struct GitHubRelease {
-    tag_name: String,
-    draft: bool,
-    prerelease: bool,
 }

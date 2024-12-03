@@ -5,84 +5,34 @@ on:
     tags:
       - 'v*'
 
+env:
+  DOCKER_IMAGE: mt2025/luffy
+
 jobs:
-  release:
-    runs-on: ubuntu-20.04
+  docker:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
-      - uses: actions/cache@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
         with:
-          toolchain: stable
-          target: aarch64-unknown-linux-gnu
-          override: true
-      
-      - name: Install cargo-deb
-        run: cargo install cargo-deb
-      
-      - name: Configure ARM64 repositories
-        run: |
-          sudo dpkg --add-architecture arm64
-          sudo cp /etc/apt/sources.list /etc/apt/sources.list.bak
-          sudo tee /etc/apt/sources.list << EOF
-          deb [arch=amd64] http://azure.archive.ubuntu.com/ubuntu/ focal main restricted universe multiverse
-          deb [arch=amd64] http://azure.archive.ubuntu.com/ubuntu/ focal-updates main restricted universe multiverse
-          deb [arch=amd64] http://azure.archive.ubuntu.com/ubuntu/ focal-security main restricted universe multiverse
-          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ focal main restricted universe multiverse
-          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ focal-updates main restricted universe multiverse
-          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ focal-security main restricted universe multiverse
-          EOF
-          sudo apt-get clean
-          sudo rm -rf /var/lib/apt/lists/*
-          sudo apt-get update
-      
-      - name: Install dependencies
-        run: |
-          sudo apt-get install -y gcc-aarch64-linux-gnu pkg-config
-          sudo apt-get install -y libssl-dev:arm64
-          sudo apt-get install -y binutils-aarch64-linux-gnu
-          sudo apt-get install -y libc6-dev-arm64-cross
-          sudo apt-get install -y libc6:arm64
-      
-      - name: Prepare files
-        run: |
-          mkdir -p target/debian/{etc/luffy,etc/systemd/system,DEBIAN}
-          cp config/dev.toml target/debian/etc/luffy/
-          cp scripts/luffy.service target/debian/etc/systemd/system/
-          cp debian/postinst target/debian/DEBIAN/postinst
-          cp debian/control target/debian/DEBIAN/control
-          chmod 755 target/debian/DEBIAN/postinst
-      
-      - name: Build and package
-        env:
-          PKG_CONFIG_ALLOW_CROSS: 1
-          OPENSSL_VERSION: "1.1"
-          OPENSSL_DIR: /usr/lib/aarch64-linux-gnu
-          OPENSSL_INCLUDE_DIR: /usr/include/aarch64-linux-gnu
-          OPENSSL_LIB_DIR: /usr/lib/aarch64-linux-gnu
-          PKG_CONFIG_PATH: /usr/lib/aarch64-linux-gnu/pkgconfig
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-          CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
-        run: |
-          cargo build --release --target aarch64-unknown-linux-gnu
-          cargo deb --target aarch64-unknown-linux-gnu --no-build
-      
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            target/aarch64-unknown-linux-gnu/debian/*.deb
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.DOCKER_IMAGE }}:latest
+            ${{ env.DOCKER_IMAGE }}:${{ steps.get_version.outputs.VERSION }} 
