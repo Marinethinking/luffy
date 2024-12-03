@@ -1,6 +1,6 @@
 [package]
 name = "luffy"
-version = "0.2.0"
+version = "0.2.2"
 edition = "2021"
 authors = ["Liang Huang <liang.huang@marinethinking.com>"]
 description = "A smart vehicle onboard program that provides network connectivity and web-based monitoring/control interface"

@@ -12,6 +12,7 @@ A smart vehicle onboard program that provides network connectivity and web-based
 
 ## Installation
 - download latest release from [here](https://github.com/marinethinking/luffy/releases)
+- apt install -y ./luffy_<version>_arm64.deb
 
 ## Development Setup
 
