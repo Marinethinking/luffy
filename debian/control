@@ -1,0 +1,11 @@
+Package: luffy
+Version: ${VERSION}
+Section: utils
+Priority: optional
+Architecture: arm64
+Maintainer: Liang Huang <liang.huang@marinethinking.com>
+Description: Smart vehicle onboard program
+ A smart vehicle onboard program that provides network connectivity 
+ and web-based monitoring/control interface.
+ Features include MQTT broker, web server, telemetry, and command control.
+Depends: ${shlibs:Depends}, ${misc:Depends} 
