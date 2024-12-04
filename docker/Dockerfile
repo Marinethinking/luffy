@@ -7,7 +7,11 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     build-essential \
     cmake \
+    git \
     && rm -rf /var/lib/apt/lists/*
+
+# Get mavlink message definitions
+RUN git clone https://github.com/mavlink/mavlink.git /tmp/mavlink
 
 # Cache dependencies
 COPY Cargo.toml Cargo.lock ./
