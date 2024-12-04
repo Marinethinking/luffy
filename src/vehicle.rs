@@ -58,7 +58,7 @@ impl Vehicle {
         VEHICLE
             .get_or_init(|| async {
                 Self {
-                    device_id: util::get_device_mac(),
+                    device_id: util::get_device_id(),
                     state: Arc::new(RwLock::new(VehicleState::default())),
                     command_tx: Arc::new(RwLock::new(None)),
                 }

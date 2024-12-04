@@ -31,6 +31,7 @@ pub struct FeatureConfig {
 #[derive(Debug, Deserialize)]
 pub struct GeneralConfig {
     pub log_level: String,
+    pub vehicle_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -79,10 +80,8 @@ pub struct WebConfig {
 pub struct OtaConfig {
     pub strategy: UpgradeStrategy,
     pub check_interval: u64,
-    pub allow_downgrade: bool,
-    pub backup_count: i32,
     pub version_check_url: String,
-    pub docker_image: String,
+    pub image_name: String,
 }
 
 #[derive(Debug, Deserialize)]

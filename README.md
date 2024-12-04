@@ -25,16 +25,13 @@ docker compose up -d
 
 #### Option 2: Manual Docker Run
 ```bash
-# Pull the image
-docker pull mt2025/luffy:latest
-
-# Run the container
 docker run -d \
   --name luffy \
+  --network host \
   --restart unless-stopped \
   -p 9000:9000 \
-  -v /path/to/config:/etc/luffy/config \
-  mt2025/luffy:latest
+  -v $HOME/.aws:/root/.aws \
+  mt2025/luffy:v0.2.2
 ```
 
 ### Build image from source

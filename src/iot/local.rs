@@ -14,6 +14,12 @@ pub struct LocalIotClient {
     running: Arc<AtomicBool>,
 }
 
+impl Default for LocalIotClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LocalIotClient {
     pub fn new() -> Self {
         Self {

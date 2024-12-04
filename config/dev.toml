@@ -8,6 +8,7 @@ ota = true
 [general]
 # TRACE, DEBUG, INFO, WARN, ERROR
 log_level = "info"
+vehicle_id = "liang-test"
 
 [aws]
 region = "ca-central-1"
@@ -39,10 +40,7 @@ port = 9000
 [ota]
 strategy = "Auto"  # "Auto", "Manual", or "Disabled"
 check_interval = 3600  # when strategy is "Auto"
-allow_downgrade = false
-backup_count = 2
-version_check_url = "https://hub.docker.com/repository/docker/mt2025/luffy/tags"
-docker_image = "mt2025/luffy"
-
+version_check_url = "https://registry.hub.docker.com/v2/repositories/mt2025/luffy/tags?page_size=100"
+image_name = "mt2025/luffy"
 
 

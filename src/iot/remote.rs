@@ -17,6 +17,12 @@ pub struct RemoteIotClient {
     running: Arc<AtomicBool>,
 }
 
+impl Default for RemoteIotClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RemoteIotClient {
     pub fn new() -> Self {
         Self {
@@ -106,7 +112,7 @@ impl RemoteIotClient {
         let key_pem = fs::read(&key_path).await?;
         let aws_root_cert = include_bytes!("../../certs/AmazonRootCA.pem");
 
-        let device_id = util::get_device_mac();
+        let device_id = util::get_device_id();
         let aws_iot_endpoint = &CONFIG.aws.iot.endpoint;
         let aws_iot_port = CONFIG.aws.iot.port;
         let client_id = format!("{}_{}", device_id, uuid::Uuid::new_v4());

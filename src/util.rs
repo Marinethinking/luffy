@@ -1,15 +1,29 @@
-use mac_address::get_mac_address;
+use network_interface::{NetworkInterface, NetworkInterfaceConfig};
+use uuid::Uuid;
 
-pub fn get_device_mac() -> String {
-    get_mac_address()
-        .ok()
-        .flatten()
-        .map(|addr| {
-            addr.to_string()
-                .chars()
-                .filter(|c| c.is_alphanumeric())
-                .collect::<String>()
-                .to_uppercase()
-        })
-        .unwrap_or_else(|| "unknown".to_string())
+use crate::config::CONFIG;
+
+pub fn get_device_id() -> String {
+    CONFIG.general.vehicle_id.clone()
+}
+
+pub fn get_mac_address() -> String {
+    let preferred_interfaces = ["eth0", "en0", "wlan0", "enp0s3"];
+
+    if let Ok(interfaces) = NetworkInterface::show() {
+        for preferred_name in preferred_interfaces {
+            if let Some(interface) = interfaces.iter().find(|iface| iface.name == preferred_name) {
+                if let Some(mac) = &interface.mac_addr {
+                    return mac
+                        .to_string()
+                        .chars()
+                        .filter(|c| c.is_alphanumeric())
+                        .collect::<String>()
+                        .to_uppercase();
+                }
+            }
+        }
+    }
+
+    Uuid::new_v4().to_string()
 }
