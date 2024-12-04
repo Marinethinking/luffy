@@ -7,9 +7,6 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     build-essential \
     cmake \
-    python3 \
-    python3-pip \
-    && pip3 install pymavlink \
     && rm -rf /var/lib/apt/lists/*
 
 # Cache dependencies
