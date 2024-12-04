@@ -48,7 +48,7 @@ impl Default for VehicleState {
 
 #[derive(Debug)]
 pub struct Vehicle {
-    pub device_id: String,
+    pub vehicle_id: String,
     state: Arc<RwLock<VehicleState>>,
     command_tx: Arc<RwLock<Option<mpsc::Sender<MavCommand>>>>,
 }
@@ -58,7 +58,7 @@ impl Vehicle {
         VEHICLE
             .get_or_init(|| async {
                 Self {
-                    device_id: util::get_device_id(),
+                    vehicle_id: util::get_vehicle_id(),
                     state: Arc::new(RwLock::new(VehicleState::default())),
                     command_tx: Arc::new(RwLock::new(None)),
                 }

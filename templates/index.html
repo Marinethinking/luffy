@@ -27,6 +27,7 @@
         <h1>System Dashboard</h1>
         <div class="version-info">
             <span>Version: {{ status.version }}</span>
+            <span class="vehicle-id">Vehicle ID: {{ status.vehicle_id }}</span>
         </div>
 
         <div class="dashboard-grid">
@@ -138,6 +139,9 @@
 
                 // Add version update
                 document.querySelector('.version-info span').textContent = `Version: ${data.version}`;
+
+                // Add vehicle ID update
+                document.querySelector('.vehicle-id').textContent = `Vehicle ID: ${data.vehicle_id}`;
             } catch (error) {
                 console.error('Error updating UI:', error);
             }

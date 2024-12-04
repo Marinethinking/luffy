@@ -34,7 +34,7 @@ impl RemoteIotClient {
     pub async fn start(&mut self) -> Result<JoinHandle<()>> {
         info!("Starting IoT client...");
         let vehicle = Vehicle::instance().await;
-        let device_id = vehicle.device_id.clone();
+        let vehicle_id = vehicle.vehicle_id.clone();
         if !self.is_registered() {
             let aws_client = AwsClient::instance().await;
             aws_client
@@ -47,11 +47,11 @@ impl RemoteIotClient {
         self.client = Some(mqtt_client.clone());
 
         mqtt_client
-            .subscribe(format!("{}/command/#", device_id), QoS::AtLeastOnce)
+            .subscribe(format!("{}/command/#", vehicle_id), QoS::AtLeastOnce)
             .await
             .context("Failed to subscribe")?;
 
-        debug!("[IOT]Successfully subscribed to {}/command/#", device_id);
+        debug!("[IOT]Successfully subscribed to {}/command/#", vehicle_id);
 
         let running = self.running.clone();
 
@@ -87,7 +87,7 @@ impl RemoteIotClient {
                 }
             };
 
-            let topic = format!("{}/telemetry", vehicle.device_id);
+            let topic = format!("{}/telemetry", vehicle.vehicle_id);
             debug!("AWS - Publishing telemetry: {}", payload);
 
             match client
@@ -112,10 +112,10 @@ impl RemoteIotClient {
         let key_pem = fs::read(&key_path).await?;
         let aws_root_cert = include_bytes!("../../certs/AmazonRootCA.pem");
 
-        let device_id = util::get_device_id();
+        let vehicle_id = util::get_vehicle_id();
         let aws_iot_endpoint = &CONFIG.aws.iot.endpoint;
         let aws_iot_port = CONFIG.aws.iot.port;
-        let client_id = format!("{}_{}", device_id, uuid::Uuid::new_v4());
+        let client_id = format!("{}_{}", vehicle_id, uuid::Uuid::new_v4());
         let mut mqtt_options = rumqttc::MqttOptions::new(client_id, aws_iot_endpoint, aws_iot_port);
 
         mqtt_options
@@ -169,13 +169,13 @@ impl RemoteIotClient {
         debug!("Received message on {}: {}", topic, payload_str);
 
         match topic {
-            t if t == format!("{}/command/mode", vehicle.device_id) => {
+            t if t == format!("{}/command/mode", vehicle.vehicle_id) => {
                 let payload_json: serde_json::Value = serde_json::from_str(&payload_str)?;
                 debug!("Payload: {}", payload_json);
                 let mode = payload_json["mode"].as_str().unwrap_or("unknown");
                 vehicle.update_flight_mode(mode.to_string())?;
             }
-            t if t == format!("{}/command/arm", vehicle.device_id) => {
+            t if t == format!("{}/command/arm", vehicle.vehicle_id) => {
                 let should_arm: bool = serde_json::from_str(&payload_str)?;
                 if should_arm {
                     // self.vehicle.arm()?;

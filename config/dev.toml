@@ -1,8 +1,8 @@
 [feature]
-local_iot = false
-remote_iot = false
-broker = false
-mavlink = false
+local_iot = true
+remote_iot = true
+broker = true
+mavlink = true
 ota = true
 
 [general]

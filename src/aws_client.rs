@@ -73,13 +73,13 @@ impl AwsClient {
 
     pub async fn register_device(&self) -> Result<IotCredentials> {
         info!("Registering device...");
-        let device_id = util::get_device_id();
+        let vehicle_id = util::get_vehicle_id();
 
         let payload = serde_json::json!({
             "typeName": "Query",
             "fieldName": "registerIotThing",
             "arguments": {
-                "thingName": device_id,
+                "thingName": vehicle_id,
                 "thingType": "zoro"
             }
         });

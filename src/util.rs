@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::config::CONFIG;
 
-pub fn get_device_id() -> String {
+pub fn get_vehicle_id() -> String {
     CONFIG.general.vehicle_id.clone()
 }
 

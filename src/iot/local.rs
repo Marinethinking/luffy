@@ -116,7 +116,7 @@ impl LocalIotClient {
                 }
             };
 
-            let topic = format!("{}/telemetry", vehicle.device_id);
+            let topic = format!("{}/telemetry", vehicle.vehicle_id);
             debug!("Broker - Publishing telemetry: {}", payload);
 
             match client
