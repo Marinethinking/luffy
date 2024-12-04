@@ -25,8 +25,13 @@ COPY . .
 RUN cargo build --release
 
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y libssl3 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y \
+    libssl3 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
 COPY --from=builder /usr/src/luffy/target/release/luffy /usr/local/bin/
-COPY config /etc/luffy/config
+COPY config /etc/luffy
+COPY static/ /app/static/
 EXPOSE 9000
 CMD ["luffy"] 

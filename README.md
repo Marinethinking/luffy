@@ -26,7 +26,7 @@ docker compose up -d
 #### Option 2: Manual Docker Run
 ```bash
 # Pull the image
-docker pull marinethinking/luffy:latest
+docker pull mt2025/luffy:latest
 
 # Run the container
 docker run -d \
@@ -34,12 +34,12 @@ docker run -d \
   --restart unless-stopped \
   -p 9000:9000 \
   -v /path/to/config:/etc/luffy/config \
-  marinethinking/luffy:latest
+  mt2025/luffy:latest
 ```
 
-### Checking logs
+### Build image from source
 ```bash
-docker logs -f luffy
+sudo docker buildx build --platform linux/arm64,linux/amd64 -t mt2025/luffy:v0.2.2 -f docker/Dockerfile --load .
 ```
 
 ## Development Setup
@@ -87,16 +87,6 @@ Add to settings.json (Cmd/Ctrl + ,):
 
 ## Release 
 
-### Prerequisites
-- Install cross-compilation tool:
-   ```bash
-   cargo install cross --git https://github.com/cross-rs/cross
-   ```
-- Test OTA:
-  ```bash
-  cargo run --bin test_ota
-  ```
-
 ### Release Process
 1. Change version to a.b.c in `Cargo.toml`
 2. Check release config [OTA] in `config/dev.toml`
@@ -116,9 +106,4 @@ If release CI failed, change ci script and re-release:
 - [AWS SDK for Rust Documentation](https://docs.aws.amazon.com/sdk-for-rust/latest/dg/welcome.html)
 - [AWS SDK Examples](https://github.com/awsdocs/aws-doc-sdk-examples/tree/main/rustv1) 
 
-
-## Installation
-- Prerequisite:
-  - AWS credentials on target machine, with minimum required permission:
-    - `lambda:InvokeFunction`  
 

@@ -81,6 +81,8 @@ pub struct OtaConfig {
     pub check_interval: u64,
     pub allow_downgrade: bool,
     pub backup_count: i32,
+    pub version_check_url: String,
+    pub docker_image: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -94,11 +96,16 @@ impl Config {
     pub fn load() -> Result<Self> {
         let env = std::env::var("RUST_ENV").unwrap_or_else(|_| "dev".to_string());
         let config_path = format!("config/{}.toml", env);
+        let fallback_path = format!("/etc/luffy/{}.toml", env);
 
-        let settings = config::Config::builder()
-            .add_source(config::File::with_name(&config_path))
-            .build()?;
+        let config_builder = config::Config::builder();
+        let config_builder = if std::path::Path::new(&config_path).exists() {
+            config_builder.add_source(config::File::with_name(&config_path))
+        } else {
+            config_builder.add_source(config::File::with_name(&fallback_path))
+        };
 
+        let settings = config_builder.build()?;
         let config = settings.try_deserialize()?;
         Ok(config)
     }

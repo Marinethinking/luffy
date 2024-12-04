@@ -24,13 +24,17 @@ impl MqttBroker {
 
     pub async fn start(&mut self) -> Result<()> {
         info!("Loading config from rumqttd.toml...");
-        let config_path = "config/rumqttd.toml";
-
-        // Check if config file exists
-        if !Path::new(config_path).exists() {
-            error!("Config file not found at: {}", config_path);
-            return Err(anyhow::anyhow!("Config file not found"));
-        }
+        let config_paths = ["config/rumqttd.toml", "/etc/luffy/rumqttd.toml"];
+        let config_path = config_paths
+            .iter()
+            .find(|&path| Path::new(path).exists())
+            .ok_or_else(|| {
+                error!(
+                    "Config file not found in any of the locations: {:?}",
+                    config_paths
+                );
+                anyhow::anyhow!("Config file not found")
+            })?;
 
         info!(
             "Loading config from: {:?}",

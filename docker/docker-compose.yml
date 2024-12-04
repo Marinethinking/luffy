@@ -2,13 +2,15 @@ version: '3'
 
 services:
   luffy:
-    image: marinethinking/luffy:latest
+    image: mt2025/luffy:v0.2.2
+    network_mode: "host"
     container_name: luffy
     restart: unless-stopped
     ports:
       - "9000:9000"
     volumes:
-      - luffy_config:/etc/luffy/config
+      - ./config:/etc/luffy
+      - $HOME/.aws:/root/.aws
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
 
@@ -21,7 +23,4 @@ services:
     command: --interval 3600 --cleanup --label-enable
     environment:
       - WATCHTOWER_NOTIFICATIONS=shoutrrr
-      - WATCHTOWER_NOTIFICATION_URL=generic://example.com  # Configure your notification URL
-
-volumes:
-  luffy_config: 
+      - WATCHTOWER_NOTIFICATION_URL=generic://example.com # Configure your notification URL

@@ -41,8 +41,8 @@ strategy = "Auto"  # "Auto", "Manual", or "Disabled"
 check_interval = 3600  # when strategy is "Auto"
 allow_downgrade = false
 backup_count = 2
-version_check_url = "https://api.github.com/repos/marinethinking/luffy/releases/latest"
-docker_image = "marinethinking/luffy"
+version_check_url = "https://hub.docker.com/repository/docker/mt2025/luffy/tags"
+docker_image = "mt2025/luffy"
 
 
 

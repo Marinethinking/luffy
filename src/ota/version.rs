@@ -7,8 +7,6 @@ use std::process::Command;
 use tokio::time::{interval, Duration};
 use tracing::{info, warn};
 
-const DOCKER_HUB_API: &str = "https://hub.docker.com/v2/repositories/marinethinking/luffy/tags";
-
 #[derive(Debug, Deserialize)]
 struct DockerHubResponse {
     results: Vec<DockerTag>,
@@ -54,7 +52,7 @@ impl VersionManager {
     pub async fn get_latest_version(&self) -> Result<String> {
         let client = reqwest::Client::new();
         let response = client
-            .get(DOCKER_HUB_API)
+            .get(&CONFIG.ota.version_check_url)
             .header("User-Agent", "luffy-updater")
             .send()
             .await?;
