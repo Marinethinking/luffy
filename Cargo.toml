@@ -41,30 +41,3 @@ futures-util = "0.3"
 [dev-dependencies]
 tempfile = "3.14"
 
-[lib]
-name = "luffy"
-path = "src/lib.rs"
-
-[package.metadata.deb]
-maintainer = "Liang Huang <liang.huang@marinethinking.com>"
-copyright = "2024, Marine Thinking"
-license-file = ["LICENSE", "4"]
-extended-description = """
-A smart vehicle onboard program that provides network connectivity 
-and web-based monitoring/control interface.
-Features include MQTT broker, web server, telemetry, and command control.
-"""
-depends = "$auto"
-section = "utility"
-priority = "optional"
-maintainer-scripts = "debian/"
-assets = [
-    ["target/release/luffy", "usr/bin/", "755"],
-    ["config/dev.toml", "etc/luffy/", "644"],
-    ["scripts/luffy.service", "etc/systemd/system/", "644"],
-]
-
-[profile.release]
-lto = 'thin'  # Faster than full LTO
-codegen-units = 16  # More parallel compilation
-opt-level = 2  # Good balance of speed vs size
