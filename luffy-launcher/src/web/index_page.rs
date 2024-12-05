@@ -1,12 +1,13 @@
+use crate::config::CONFIG;
+use crate::monitor::vehicle::{Vehicle, VehicleState};
 use crate::ota::version::VERSION;
-use crate::util;
-use crate::vehicle::{Vehicle, VehicleState};
 use askama::Template;
 use axum::{
     response::{Html, IntoResponse},
     routing::get,
     Json, Router,
 };
+use luffy_common::util;
 use serde::Serialize;
 
 // View model for the page
@@ -33,7 +34,7 @@ pub struct StatusViewModel {
 impl From<VehicleState> for StatusViewModel {
     fn from(state: VehicleState) -> Self {
         Self {
-            vehicle_id: util::get_vehicle_id(),
+            vehicle_id: util::get_vehicle_id(&CONFIG.base),
             location: format!("{:.6}, {:.6}", state.location.0, state.location.1),
             yaw: state.yaw_degree,
             battery: state.battery_percentage,

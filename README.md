@@ -10,6 +10,13 @@ A smart vehicle onboard program that provides network connectivity and web-based
 - **Command**: Command subscription from upstream node to vehicle
 - **OTA**: Over-the-air update for the vehicle
 
+luffy/
+├── luffy-launcher/       # Main launcher/orchestrator
+├── luffy-gateway/       # Communication services
+├── luffy-video/         # Video processing service
+├── luffy-common/        # Shared libraries
+└── luffy-deploy/        # Deployment configurations
+
 ## Installation
 
 ### Using Docker
@@ -19,7 +26,7 @@ A smart vehicle onboard program that provides network connectivity and web-based
 git clone https://github.com/marinethinking/luffy.git
 cd luffy/docker
 
-# Start services
+# Start services with self update
 docker compose up -d
 ```
 
@@ -31,12 +38,12 @@ docker run -d \
   --restart unless-stopped \
   -p 9000:9000 \
   -v $HOME/.aws:/root/.aws \
-  mt2025/luffy:v0.2.2
+  mt2025/luffy:latest
 ```
 
 ### Build image from source
 ```bash
-sudo docker buildx build --platform linux/arm64,linux/amd64 -t mt2025/luffy:v0.2.2 -f docker/Dockerfile --load .
+sudo docker buildx build --platform linux/arm64,linux/amd64 -t mt2025/luffy:v0.3.1 -t mt2025/luffy:latest -f docker/Dockerfile --push --load .
 ```
 
 ## Development Setup

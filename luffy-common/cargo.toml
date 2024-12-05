@@ -1,0 +1,16 @@
+[package]
+name = "luffy-common"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+config.workspace = true
+tokio.workspace = true
+serde.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+rumqttc.workspace = true
+
+network-interface = "2.0"
+uuid = { version = "1.11", features = ["v4"] }

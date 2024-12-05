@@ -4,6 +4,7 @@ use reqwest;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::process::Command;
+use std::str::FromStr;
 use tokio::time::{interval, Duration};
 use tracing::{info, warn};
 
@@ -32,6 +33,19 @@ pub enum UpgradeStrategy {
     Disabled, // No upgrades allowed
 }
 
+impl FromStr for UpgradeStrategy {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "auto" => Ok(UpgradeStrategy::Auto),
+            "manual" => Ok(UpgradeStrategy::Manual),
+            "disabled" => Ok(UpgradeStrategy::Disabled),
+            _ => Err(anyhow!("Invalid upgrade strategy: {}", s)),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VersionManager {
     strategy: UpgradeStrategy,
@@ -42,16 +56,17 @@ pub struct VersionManager {
 impl VersionManager {
     pub fn new() -> Result<Self> {
         Ok(Self {
-            strategy: CONFIG.ota.strategy.clone(),
+            strategy: UpgradeStrategy::from_str(&CONFIG.ota.strategy)?,
             current_version: env!("CARGO_PKG_VERSION").to_string(),
-            check_interval: Duration::from_secs(CONFIG.ota.check_interval),
+            check_interval: Duration::from_secs(CONFIG.ota.check_interval as u64),
         })
     }
 
     pub async fn update_container(&self, version: &str) -> Result<()> {
-        Command::new("docker")
-            .args(["pull", &format!("{}:{}", CONFIG.ota.image_name, version)])
-            .status()?;
+        let image_name = &format!("{}:{}", CONFIG.ota.image_name, version);
+        info!("Pulling image: {}", image_name);
+        println!("Pulling image: {}", image_name);
+        Command::new("docker").args(["pull", image_name]).status()?;
         Ok(())
     }
 

@@ -1,0 +1,35 @@
+[package]
+name = "luffy-launcher"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+
+[dependencies]
+luffy-common = { path = "../luffy-common" }
+
+anyhow.workspace = true
+config.workspace = true
+once_cell.workspace = true
+rumqttc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+uuid.workspace = true
+
+axum = "0.7"
+askama = "0.12"
+chrono = "0.4"
+dirs = "5.0"
+indicatif = "0.17"
+num-traits = "0.2"
+reqwest = { version = "0.12", features = ["stream","rustls-tls"], default-features = false }
+semver = "1.0"
+tower-http = { version = "0.6", features = ["full"] }
+
+
+[dev-dependencies]
+tempfile = "3.14"
+

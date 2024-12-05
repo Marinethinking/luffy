@@ -24,7 +24,10 @@ impl MqttBroker {
 
     pub async fn start(&mut self) -> Result<()> {
         info!("Loading config from rumqttd.toml...");
-        let config_paths = ["config/rumqttd.toml", "/etc/luffy/rumqttd.toml"];
+        let config_paths = [
+            "luffy-deploy/config/development/rumqttd.toml",
+            "/etc/luffy/rumqttd.toml",
+        ];
         let config_path = config_paths
             .iter()
             .find(|&path| Path::new(path).exists())

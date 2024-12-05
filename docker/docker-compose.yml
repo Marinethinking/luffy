@@ -2,7 +2,7 @@ version: '3'
 
 services:
   luffy:
-    image: mt2025/luffy:v0.2.2
+    image: mt2025/luffy:latest
     network_mode: "host"
     container_name: luffy
     restart: unless-stopped
@@ -11,8 +11,10 @@ services:
     volumes:
       - ./config:/etc/luffy
       - $HOME/.aws:/root/.aws
+      - /var/run/docker.sock:/var/run/docker.sock
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
+      - "com.centurylinklabs.watchtower.scope=luffy"
 
   watchtower:
     image: containrrr/watchtower
@@ -20,7 +22,6 @@ services:
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    command: --interval 3600 --cleanup --label-enable
-    environment:
-      - WATCHTOWER_NOTIFICATIONS=shoutrrr
-      - WATCHTOWER_NOTIFICATION_URL=generic://example.com # Configure your notification URL
+    command: --interval 10 --cleanup --label-enable --scope luffy
+    labels:
+      - "com.centurylinklabs.watchtower.scope=luffy"

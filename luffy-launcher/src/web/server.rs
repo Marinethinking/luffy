@@ -10,7 +10,7 @@ use axum::Router;
 use tower_http::services::ServeDir;
 
 use super::index_page;
-use crate::{config::CONFIG, vehicle::Vehicle};
+use crate::{config::{LauncherConfig, CONFIG}, monitor::vehicle::Vehicle};
 
 use anyhow::{Context, Result};
 

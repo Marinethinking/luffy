@@ -25,9 +25,9 @@ COPY . .
 RUN cargo build --release
 
 FROM debian:bookworm-slim
+# Install Docker CLI
 RUN apt-get update && apt-get install -y \
-    libssl3 \
-    ca-certificates \
+    docker.io \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=builder /usr/src/luffy/target/release/luffy /usr/local/bin/

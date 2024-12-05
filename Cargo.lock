@@ -2214,8 +2214,22 @@ dependencies = [
 ]
 
 [[package]]
-name = "luffy"
-version = "0.3.0"
+name = "luffy-common"
+version = "0.3.1"
+dependencies = [
+ "anyhow",
+ "config 0.14.1",
+ "network-interface",
+ "rumqttc",
+ "serde",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "luffy-gateway"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "askama",
@@ -2229,6 +2243,7 @@ dependencies = [
  "dirs",
  "futures-util",
  "indicatif",
+ "luffy-common",
  "mavlink",
  "network-interface",
  "num-traits",
@@ -2248,6 +2263,37 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
 ]
+
+[[package]]
+name = "luffy-launcher"
+version = "0.3.1"
+dependencies = [
+ "anyhow",
+ "askama",
+ "axum 0.7.9",
+ "chrono",
+ "config 0.14.1",
+ "dirs",
+ "indicatif",
+ "luffy-common",
+ "num-traits",
+ "once_cell",
+ "reqwest",
+ "rumqttc",
+ "semver",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
+name = "luffy-media"
+version = "0.3.1"
 
 [[package]]
 name = "mach2"

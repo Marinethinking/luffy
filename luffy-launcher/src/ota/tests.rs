@@ -2,6 +2,16 @@
 mod ota_tests {
     use super::super::version::VersionManager;
     use anyhow::Result;
+    use tracing_subscriber::{fmt, EnvFilter};
+
+    fn init_logger() {
+        tracing_subscriber::fmt()
+            .with_env_filter(
+                EnvFilter::from_default_env().add_directive(tracing::Level::DEBUG.into()),
+            )
+            .with_test_writer()
+            .init();
+    }
 
     #[tokio::test]
     async fn test_version_management() -> Result<()> {
@@ -22,6 +32,7 @@ mod ota_tests {
 
     #[tokio::test]
     async fn test_docker_update() -> Result<()> {
+        init_logger();
         let version_manager = VersionManager::new()?;
 
         // Test the update process

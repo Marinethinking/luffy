@@ -4,18 +4,32 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable",
-            "cargo": {
-                "args": ["build"]
-            },
+            "name": "Gateway",
+            "program": "${workspaceFolder}/target/debug/luffy-gateway",
             "args": [],
             "cwd": "${workspaceFolder}",
-            "program": "${workspaceFolder}/target/debug/luffy",
             "preLaunchTask": "cargo build",
             "env": {
                 "RUST_LOG": "debug",
-                "RUST_BACKTRACE": "1"
-            }
+                "CONFIG_DIR": "${workspaceFolder}/luffy-deploy/config",
+                "RUST_ENV": "development",
+                "VEHICLE_ID": "liang-dev"
+            },
+            "sourceLanguages": ["rust"]
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Launcher",
+            "program": "${workspaceFolder}/target/debug/luffy-launcher",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "cargo build",
+            "env": {
+                "RUST_LOG": "debug",
+                "RUST_ENV": "development"
+            },
+            "sourceLanguages": ["rust"]
         }
     ]
 }

@@ -1,11 +1,10 @@
 use anyhow::Result;
 
-use luffy::broker::MqttBroker;
-use luffy::config::CONFIG;
-use luffy::iot::server::IotServer;
-use luffy::mav_server::MavlinkServer;
-use luffy::ota::VersionManager;
-use luffy::web::server::WebServer;
+use luffy_gateway::broker::MqttBroker;
+use luffy_gateway::config::CONFIG;
+use luffy_gateway::iot::server::IotServer;
+use luffy_gateway::mav_server::MavlinkServer;
+
 use tokio::signal;
 use tokio::sync::broadcast;
 use tracing::{error, info};
@@ -31,8 +30,7 @@ async fn main() -> Result<()> {
         tokio::spawn(async {})
     };
 
-    let web_handle = spawn_web_server(shutdown_tx.subscribe()).await;
-    let mqtt_handle = if CONFIG.feature.broker {
+    let broker_handle = if CONFIG.feature.broker {
         spawn_mqtt_broker(shutdown_tx.subscribe()).await
     } else {
         info!("MQTT broker disabled in config, skipping...");
@@ -43,13 +41,6 @@ async fn main() -> Result<()> {
         spawn_iot_server(shutdown_tx.subscribe()).await
     } else {
         info!("IoT server disabled in config, skipping...");
-        tokio::spawn(async {})
-    };
-
-    let ota_handle = if CONFIG.feature.ota {
-        spawn_ota_server(shutdown_tx.subscribe()).await
-    } else {
-        info!("OTA server disabled in config, skipping...");
         tokio::spawn(async {})
     };
 
@@ -67,25 +58,15 @@ async fn main() -> Result<()> {
         }
     };
 
-    let results = tokio::join!(
-        mav_handle,
-        iot_handle,
-        web_handle,
-        mqtt_handle,
-        ota_handle,
-        shutdown_signal
-    );
+    let results = tokio::join!(mav_handle, iot_handle, broker_handle, shutdown_signal);
 
-    for (result, name) in [results.0, results.1, results.2, results.3]
-        .into_iter()
-        .zip([
-            "MAVLink server",
-            "IoT server",
-            "Web server",
-            "MQTT broker",
-            "OTA server",
-        ])
-    {
+    for (result, name) in [results.0, results.1, results.2].into_iter().zip([
+        "MAVLink server",
+        "IoT server",
+        "Web server",
+        "MQTT broker",
+        "OTA server",
+    ]) {
         if let Err(e) = result {
             error!("{} join error: {}", name, e);
         }
@@ -151,34 +132,8 @@ async fn spawn_iot_server(mut shutdown: broadcast::Receiver<()>) -> tokio::task:
     })
 }
 
-async fn spawn_web_server(mut shutdown: broadcast::Receiver<()>) -> tokio::task::JoinHandle<()> {
-    info!("Starting web server...");
-    let server = WebServer::new().await;
-    tokio::spawn(async move {
-        tokio::select! {
-            result = server.start() => {
-                if let Err(e) = result {
-                    error!("Web server error: {}", e);
-                }
-            }
-            _ = shutdown.recv() => {
-                info!("Shutting down web server...");
-                server.stop().await;
-            }
-        }
-    })
-}
-
-async fn spawn_ota_server(mut shutdown: broadcast::Receiver<()>) -> tokio::task::JoinHandle<()> {
-    info!("Starting OTA server...");
-    let manager = VersionManager::new().unwrap();
-    tokio::spawn(async move {
-        manager.start_version_management().await.unwrap();
-    })
-}
-
 fn setup_logging() {
-    let log_level = &CONFIG.general.log_level;
+    let log_level = &CONFIG.log_level;
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::fmt::layer()

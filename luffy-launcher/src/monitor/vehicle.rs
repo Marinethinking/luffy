@@ -5,9 +5,9 @@ use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc;
 use tokio::sync::OnceCell;
 
-use crate::mav_server::MavCommand;
-use crate::util;
+use crate::config::CONFIG;
 
+use luffy_common::util;
 static VEHICLE: OnceCell<Vehicle> = OnceCell::const_new();
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,7 +50,6 @@ impl Default for VehicleState {
 pub struct Vehicle {
     pub vehicle_id: String,
     state: Arc<RwLock<VehicleState>>,
-    command_tx: Arc<RwLock<Option<mpsc::Sender<MavCommand>>>>,
 }
 
 impl Vehicle {
@@ -58,9 +57,8 @@ impl Vehicle {
         VEHICLE
             .get_or_init(|| async {
                 Self {
-                    vehicle_id: util::get_vehicle_id(),
+                    vehicle_id: util::get_vehicle_id(&CONFIG.base),
                     state: Arc::new(RwLock::new(VehicleState::default())),
-                    command_tx: Arc::new(RwLock::new(None)),
                 }
             })
             .await
@@ -93,39 +91,6 @@ impl Vehicle {
             .read()
             .map_err(|e| anyhow!("Lock error: {}", e))?;
         Ok(state.clone())
-    }
-
-    // Example of a more complex operation
-    pub fn update_flight_mode(&self, mode: String) -> Result<()> {
-        let mut state = self
-            .state
-            .write()
-            .map_err(|e| anyhow!("Lock error: {}", e))?;
-        state.flight_mode = mode;
-        // Log mode change or perform additional actions
-        Ok(())
-    }
-
-    pub fn set_command_sender(&self, sender: mpsc::Sender<MavCommand>) -> Result<()> {
-        let mut tx = self
-            .command_tx
-            .write()
-            .map_err(|e| anyhow!("Lock error: {}", e))?;
-        *tx = Some(sender);
-        Ok(())
-    }
-
-    pub fn send_command(&self, command: MavCommand) -> Result<()> {
-        let tx = self
-            .command_tx
-            .read()
-            .map_err(|e| anyhow!("Lock error: {}", e))?;
-        if let Some(sender) = tx.as_ref() {
-            sender.try_send(command).context("Failed to send command")?;
-            Ok(())
-        } else {
-            Err(anyhow!("Command sender not initialized"))
-        }
     }
 
     pub fn update_armed_state(&self, armed: bool) -> Result<()> {

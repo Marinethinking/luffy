@@ -2,9 +2,9 @@ use anyhow::{Context, Result};
 use aws_config::{meta::region::RegionProviderChain, BehaviorVersion, Region};
 use aws_sdk_lambda::{primitives::Blob, Client as LambdaClient};
 use aws_sdk_s3::Client as S3Client;
+use luffy_common::util;
 
 use crate::config::CONFIG;
-use crate::util;
 
 use serde::Deserialize;
 
@@ -73,7 +73,7 @@ impl AwsClient {
 
     pub async fn register_device(&self) -> Result<IotCredentials> {
         info!("Registering device...");
-        let vehicle_id = util::get_vehicle_id();
+        let vehicle_id = util::get_vehicle_id(&CONFIG.base);
 
         let payload = serde_json::json!({
             "typeName": "Query",

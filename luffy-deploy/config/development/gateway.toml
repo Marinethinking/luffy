@@ -1,14 +1,10 @@
+log_level = "info"
+
 [feature]
 local_iot = true
 remote_iot = true
 broker = true
 mavlink = true
-ota = true
-
-[general]
-# TRACE, DEBUG, INFO, WARN, ERROR
-log_level = "info"
-vehicle_id = "liang-test"
 
 [aws]
 region = "ca-central-1"
@@ -32,15 +28,4 @@ port = 9183  # needs to be same with rumqttd.toml
 
 [mavlink]
 connection_string = "udpin:192.168.20.183:14559"  
-
-[web]
-host = "0.0.0.0"
-port = 9000
-
-[ota]
-strategy = "Auto"  # "Auto", "Manual", or "Disabled"
-check_interval = 3600  # when strategy is "Auto"
-version_check_url = "https://registry.hub.docker.com/v2/repositories/mt2025/luffy/tags?page_size=100"
-image_name = "mt2025/luffy"
-
 

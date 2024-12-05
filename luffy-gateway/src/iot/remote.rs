@@ -9,8 +9,8 @@ use tracing::{debug, error, info};
 
 use crate::aws_client::AwsClient;
 use crate::config::CONFIG;
-use crate::util;
 use crate::vehicle::Vehicle;
+use luffy_common::util;
 
 pub struct RemoteIotClient {
     client: Option<AsyncClient>,
@@ -112,7 +112,7 @@ impl RemoteIotClient {
         let key_pem = fs::read(&key_path).await?;
         let aws_root_cert = include_bytes!("../../certs/AmazonRootCA.pem");
 
-        let vehicle_id = util::get_vehicle_id();
+        let vehicle_id = util::get_vehicle_id(&CONFIG.base);
         let aws_iot_endpoint = &CONFIG.aws.iot.endpoint;
         let aws_iot_port = CONFIG.aws.iot.port;
         let client_id = format!("{}_{}", vehicle_id, uuid::Uuid::new_v4());
