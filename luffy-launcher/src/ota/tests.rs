@@ -15,7 +15,7 @@ mod ota_tests {
 
     #[tokio::test]
     async fn test_version_management() -> Result<()> {
-        let version_manager = VersionManager::new()?;
+        let version_manager = VersionManager::new();
 
         // Check current version
         let current = version_manager.get_current_version();
@@ -33,7 +33,7 @@ mod ota_tests {
     #[tokio::test]
     async fn test_docker_update() -> Result<()> {
         init_logger();
-        let version_manager = VersionManager::new()?;
+        let version_manager = VersionManager::new();
 
         // Test the update process
         version_manager.check_and_apply_updates().await?;

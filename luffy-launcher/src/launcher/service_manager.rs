@@ -1,9 +1,20 @@
 use crate::config::CONFIG;
 use std::process::{Child, Command};
+use tracing::error;
 
 pub struct ServiceManager {}
 
+impl Default for ServiceManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ServiceManager {
+    pub fn new() -> Self {
+        Self {}
+    }
+
     pub async fn start_services(&self) -> Result<Vec<Child>, Box<dyn std::error::Error>> {
         let mut children = Vec::new();
 
@@ -32,5 +43,18 @@ impl ServiceManager {
             .spawn()?;
 
         Ok(child)
+    }
+
+    pub async fn stop_services(
+        &self,
+        children: &mut Vec<Child>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        for child in children.iter_mut() {
+            if let Err(e) = child.kill() {
+                error!("Failed to kill child process: {}", e);
+            }
+        }
+        children.clear();
+        Ok(())
     }
 }

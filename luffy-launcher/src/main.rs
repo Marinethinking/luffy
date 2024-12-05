@@ -1,19 +1,13 @@
-use luffy_launcher::launcher::service_manager::ServiceManager;
+use luffy_launcher::{launcher::service_manager::ServiceManager, ota::version::VersionManager};
 
-use luffy_launcher::ota::OtaManager;
 use luffy_launcher::web::server::WebServer;
-use std::path::PathBuf;
+
 use tokio::signal;
 use tokio::sync::broadcast;
 use tracing::{error, info};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let environment = std::env::var("RUST_ENV").unwrap_or_else(|_| "development".to_string());
-    let config_path = PathBuf::from("luffy-deploy/config")
-        .join(&environment)
-        .join("launcher.toml");
-
     // Create a shutdown signal channel
     let (shutdown_tx, _) = broadcast::channel(1);
 
@@ -61,7 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn spawn_service_manager(
     mut shutdown: broadcast::Receiver<()>,
 ) -> tokio::task::JoinHandle<()> {
-    let manager = ServiceManager {};
+    let manager = ServiceManager::new();
     tokio::spawn(async move {
         tokio::select! {
             result = manager.start_services() => {
@@ -79,10 +73,14 @@ async fn spawn_service_manager(
 }
 
 async fn spawn_ota_checker(mut shutdown: broadcast::Receiver<()>) -> tokio::task::JoinHandle<()> {
-    let ota = OtaManager::new();
+    let ota = VersionManager::new();
     tokio::spawn(async move {
         tokio::select! {
-            _ = ota.check_updates() => {}
+            result = ota.start() => {
+                if let Err(e) = result {
+                    error!("OTA checker error: {}", e);
+                }
+            }
             _ = shutdown.recv() => {
                 info!("Shutting down OTA checker...");
                 // Add stop method to OtaManager if needed

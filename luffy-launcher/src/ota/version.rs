@@ -26,40 +26,26 @@ struct DockerTag {
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-pub enum UpgradeStrategy {
-    Auto,     // Automatically check and upgrade
-    Manual,   // Wait for upstream command
-    Disabled, // No upgrades allowed
-}
-
-impl FromStr for UpgradeStrategy {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "auto" => Ok(UpgradeStrategy::Auto),
-            "manual" => Ok(UpgradeStrategy::Manual),
-            "disabled" => Ok(UpgradeStrategy::Disabled),
-            _ => Err(anyhow!("Invalid upgrade strategy: {}", s)),
-        }
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VersionManager {
-    strategy: UpgradeStrategy,
+    strategy: String,
     current_version: String,
     check_interval: Duration,
 }
 
+impl Default for VersionManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VersionManager {
-    pub fn new() -> Result<Self> {
-        Ok(Self {
-            strategy: UpgradeStrategy::from_str(&CONFIG.ota.strategy)?,
+    pub fn new() -> Self {
+        Self {
+            strategy: CONFIG.ota.strategy.clone(),
             current_version: env!("CARGO_PKG_VERSION").to_string(),
             check_interval: Duration::from_secs(CONFIG.ota.check_interval as u64),
-        })
+        }
     }
 
     pub async fn update_container(&self, version: &str) -> Result<()> {
@@ -137,9 +123,9 @@ impl VersionManager {
         Ok(())
     }
 
-    pub async fn start_version_management(&self) -> Result<()> {
-        match self.strategy {
-            UpgradeStrategy::Auto => {
+    pub async fn start(&self) -> Result<()> {
+        match self.strategy.as_str() {
+            "auto" => {
                 info!(
                     "Starting auto update task with interval: {:?}",
                     self.check_interval
@@ -156,8 +142,9 @@ impl VersionManager {
                     }
                 });
             }
-            UpgradeStrategy::Manual => info!("Manual update mode - waiting for upstream commands"),
-            UpgradeStrategy::Disabled => info!("Version upgrades are disabled"),
+            "manual" => info!("Manual update mode - waiting for upstream commands"),
+            "disabled" => info!("Version upgrades are disabled"),
+            _ => return Err(anyhow!("Invalid upgrade strategy: {}", self.strategy)),
         }
         Ok(())
     }

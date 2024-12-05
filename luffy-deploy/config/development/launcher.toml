@@ -8,18 +8,18 @@ image_name = "mt2025/luffy"
 
 [web]
 host = "0.0.0.0"
-port = 8080
+port = 9000
 
 [services]
 
 
 [services.gateway]
-enabled = true
+enabled = false
 command = "cargo run --package luffy-gateway"
 config_dir = "/etc/luffy/config"
 
 [services.media]
-enabled = true
+enabled = false
 command = "cargo run --package luffy-media"
 config_dir = "/etc/luffy/config"
     

@@ -11,9 +11,8 @@
             "preLaunchTask": "cargo build",
             "env": {
                 "RUST_LOG": "debug",
-                "CONFIG_DIR": "${workspaceFolder}/luffy-deploy/config",
                 "RUST_ENV": "development",
-                "VEHICLE_ID": "liang-dev"
+           
             },
             "sourceLanguages": ["rust"]
         },
