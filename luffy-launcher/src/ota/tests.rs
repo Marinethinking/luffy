@@ -1,16 +1,18 @@
 #[cfg(test)]
 mod ota_tests {
+    use crate::config::CONFIG;
+
     use super::super::version::VersionManager;
+    use super::super::*;
     use anyhow::Result;
+    use std::env;
+    use tracing::info;
     use tracing_subscriber::{fmt, EnvFilter};
 
-    fn init_logger() {
-        tracing_subscriber::fmt()
-            .with_env_filter(
-                EnvFilter::from_default_env().add_directive(tracing::Level::DEBUG.into()),
-            )
-            .with_test_writer()
-            .init();
+    fn init() {
+        env::set_var("RUST_ENV", "dev");
+
+        luffy_common::util::setup_logging("debug");
     }
 
     #[tokio::test]
@@ -23,17 +25,23 @@ mod ota_tests {
         println!("Current version: {}", current);
 
         // Check latest version from GitHub
-        let (latest_version, download_url) = version_manager.get_latest_version().await?;
+        let (latest_version, packages) = version_manager.get_latest_version().await?;
         assert!(!latest_version.is_empty());
-        assert!(download_url.ends_with(".deb"));
-        println!("Latest version: {} ({})", latest_version, download_url);
+        assert!(!packages.is_empty());
+
+        println!("Latest version: {}", latest_version);
+        for (filename, url) in packages {
+            println!("Package: {} ({})", filename, url);
+            assert!(filename.ends_with(".deb"));
+        }
 
         Ok(())
     }
 
     #[tokio::test]
     async fn test_deb_update() -> Result<()> {
-        init_logger();
+        init();
+        info!("Starting test_deb_update {}", CONFIG.ota.strategy);
         let version_manager = VersionManager::new();
 
         // Test the update process

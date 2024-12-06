@@ -13,8 +13,11 @@ pub trait LoadConfig {
     where
         Self: Sized + serde::de::DeserializeOwned,
     {
-        // Try development path first
-        let dev_path = PathBuf::from("luffy-deploy/config/development");
+        // Try development path first, relative to project root
+        let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap_or(PathBuf::from(".").as_path())
+            .join("luffy-deploy/config/development");
         let prod_path = PathBuf::from("/etc/luffy");
 
         let config_dir = if dev_path.join(format!("{}.toml", service_name)).exists() {

@@ -25,6 +25,9 @@ pub struct OtaConfig {
     pub strategy: String,
     pub check_interval: u32,
     pub github_repo: String,
+    pub gateway: bool,
+    pub media: bool,
+    pub download_dir: Option<String>,
 }
 
 impl LoadConfig for LauncherConfig {}

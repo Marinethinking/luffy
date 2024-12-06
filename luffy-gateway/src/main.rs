@@ -8,13 +8,11 @@ use luffy_gateway::mav_server::MavlinkServer;
 use tokio::signal;
 use tokio::sync::broadcast;
 use tracing::{error, info};
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    setup_logging();
+    let log_level = &CONFIG.log_level;
+    luffy_common::util::setup_logging(log_level);
     info!("Application starting...");
 
     info!("Region: {:?}", &CONFIG.aws.region);
@@ -130,28 +128,4 @@ async fn spawn_iot_server(mut shutdown: broadcast::Receiver<()>) -> tokio::task:
             }
         }
     })
-}
-
-fn setup_logging() {
-    let log_level = &CONFIG.log_level;
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::fmt::layer()
-                .with_thread_ids(true) // Show thread IDs
-                .with_thread_names(true) // Show thread names
-                .with_target(true) // Show module path
-                .with_file(true) // Show file name
-                .with_line_number(true) // Show line numbers
-                .pretty(),
-        ) // Pretty printing
-        .with(
-            EnvFilter::from_default_env()
-                .add_directive(log_level.parse().unwrap())
-                .add_directive("tokio=debug".parse().unwrap()) // Tokio runtime logs
-                .add_directive("runtime=debug".parse().unwrap())
-                .add_directive("rumqttc=info".parse().unwrap())
-                .add_directive("rumqttd=info".parse().unwrap()),
-        ) // Runtime events
-        .try_init()
-        .expect("Failed to initialize logging");
 }

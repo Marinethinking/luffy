@@ -1,4 +1,4 @@
-use luffy_launcher::{ota::version::VersionManager, web::server::WebServer};
+use luffy_launcher::{config::CONFIG, ota::version::VersionManager, web::server::WebServer};
 
 use tokio::signal;
 use tokio::sync::broadcast;
@@ -6,6 +6,10 @@ use tracing::{error, info};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let log_level = &CONFIG.log_level;
+    luffy_common::util::setup_logging(log_level);
+    info!("Application starting...");
+
     // Create a shutdown signal channel
     let (shutdown_tx, _) = broadcast::channel(1);
 

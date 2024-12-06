@@ -1,11 +1,5 @@
 log_level = "info"
 
-[ota]
-strategy = "Auto"  # "Auto", "Manual", or "Disabled"
-check_interval = 3600  # when strategy is "Auto"
-version_check_url = "https://registry.hub.docker.com/v2/repositories/mt2025/luffy/tags?page_size=100"
-image_name = "mt2025/luffy"
-
 [web]
 host = "0.0.0.0"
 port = 9000
@@ -14,5 +8,6 @@ port = 9000
 strategy = "auto"  # or "manual" or "disabled"
 check_interval = 3600  # in seconds
 github_repo = "Marinethinking/luffy"
-service_name = "luffy-launcher"
-    
+gateway=true
+media=true
+download_dir = "/home/luffy/.deb/"

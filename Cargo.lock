@@ -2224,6 +2224,7 @@ dependencies = [
  "serde",
  "tokio",
  "tracing",
+ "tracing-subscriber",
  "uuid",
 ]
 
@@ -2260,7 +2261,6 @@ dependencies = [
  "tokio",
  "tower-http",
  "tracing",
- "tracing-subscriber",
  "uuid",
 ]
 
@@ -2274,6 +2274,7 @@ dependencies = [
  "chrono",
  "config 0.14.1",
  "dirs",
+ "futures",
  "indicatif",
  "luffy-common",
  "num-traits",
