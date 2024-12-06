@@ -10,16 +10,9 @@ image_name = "mt2025/luffy"
 host = "0.0.0.0"
 port = 9000
 
-[services]
-
-
-[services.gateway]
-enabled = false
-command = "cargo run --package luffy-gateway"
-config_dir = "/etc/luffy/config"
-
-[services.media]
-enabled = false
-command = "cargo run --package luffy-media"
-config_dir = "/etc/luffy/config"
+[ota]
+strategy = "auto"  # or "manual" or "disabled"
+check_interval = 3600  # in seconds
+github_repo = "Marinethinking/luffy"
+service_name = "luffy-launcher"
     

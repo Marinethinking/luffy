@@ -12,7 +12,6 @@ pub struct LauncherConfig {
     pub log_level: String,
     pub web: WebConfig,
     pub ota: OtaConfig,
-    pub services: ServicesConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -26,26 +25,6 @@ pub struct OtaConfig {
     pub strategy: String,
     pub check_interval: u32,
     pub github_repo: String,
-    pub github_token: Option<String>,
-    pub service_name: String,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct ServicesConfig {
-    pub gateway: ServiceGatewayConfig,
-    pub media: ServiceMediaConfig,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct ServiceGatewayConfig {
-    pub enabled: bool,
-    pub command: String,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct ServiceMediaConfig {
-    pub enabled: bool,
-    pub command: String,
 }
 
 impl LoadConfig for LauncherConfig {}

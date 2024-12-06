@@ -68,8 +68,8 @@ impl VersionManager {
 
         let mut request = client.get(&url).header("User-Agent", "luffy-updater");
 
-        // Add authorization token if provided
-        if let Some(token) = &CONFIG.ota.github_token {
+        // Add authorization token from environment variable
+        if let Ok(token) = std::env::var("LUFFY_GITHUB_TOKEN") {
             request = request.header("Authorization", format!("token {}", token));
         }
 
@@ -83,7 +83,7 @@ impl VersionManager {
         }
 
         let release: GithubRelease = response.json().await?;
-        
+
         // Find the .deb asset
         let deb_asset = release
             .assets
@@ -91,7 +91,10 @@ impl VersionManager {
             .find(|asset| asset.name.ends_with(".deb"))
             .ok_or_else(|| anyhow!("No .deb package found in release"))?;
 
-        Ok((release.tag_name.clone(), deb_asset.browser_download_url.clone()))
+        Ok((
+            release.tag_name.clone(),
+            deb_asset.browser_download_url.clone(),
+        ))
     }
 
     pub async fn update_package(&self, version: &str, url: &str) -> Result<()> {
@@ -117,21 +120,14 @@ impl VersionManager {
 
     pub async fn check_and_apply_updates(&self) -> Result<()> {
         let (latest_version, download_url) = self.get_latest_version().await?;
-        
+
         let current = Version::parse(&self.current_version)?;
         let latest = Version::parse(latest_version.trim_start_matches('v'))?;
 
         if latest > current {
             info!("New version available: {} -> {}", current, latest);
             match self.update_package(&latest_version, &download_url).await {
-                Ok(_) => {
-                    info!("Update successful");
-                    // Restart the service
-                    Command::new("sudo")
-                        .args(["systemctl", "restart", &CONFIG.ota.service_name])
-                        .status()
-                        .context("Failed to restart service")?;
-                }
+                Ok(_) => info!("Update successful - service will be restarted by dpkg"),
                 Err(e) => warn!("Update failed: {}", e),
             }
         } else {
