@@ -41,3 +41,18 @@ network-interface = "2.0"
 [dev-dependencies]
 tempfile = "3.14"
 
+
+[package.metadata.deb]
+maintainer = "Marine Thinking <liang.huang@marinethinking.com>"
+copyright = "2024, Marine Thinking <liang.huang@marinethinking.com>"
+depends = "$auto"
+section = "utility"
+priority = "optional"
+assets = [
+    ["target/release/luffy-gateway", "usr/bin/", "755"],
+    ["../luffy-deploy/config/development/*", "etc/luffy/", "644"],
+    ["../luffy-deploy/scripts/luffy-gateway.service", "lib/systemd/system/", "644"],
+]
+conf-files = ["/etc/luffy/*"]
+systemd-units = { unit-name = "luffy-gateway", enable = true, start = true }
+maintainer-scripts = "debian/"

@@ -13,21 +13,27 @@ pub trait LoadConfig {
     where
         Self: Sized + serde::de::DeserializeOwned,
     {
-        let config_dir =
-            std::env::var("CONFIG_DIR").unwrap_or_else(|_| "luffy-deploy/config".to_string());
+        // Try development path first
+        let dev_path = PathBuf::from("luffy-deploy/config/development");
+        let prod_path = PathBuf::from("/etc/luffy");
 
-        let env = std::env::var("RUST_ENV").unwrap_or_else(|_| "development".to_string());
+        let config_dir = if dev_path.join(format!("{}.toml", service_name)).exists() {
+            dev_path
+        } else if prod_path.join(format!("{}.toml", service_name)).exists() {
+            prod_path
+        } else {
+            return Err(ConfigError::NotFound(format!(
+                "Config file not found in {:?}",
+                prod_path.join(format!("{}.toml", service_name))
+            )));
+        };
 
         let config = Config::builder()
-            // Base config first
+            // Base config first (if it exists)
+            .add_source(File::from(config_dir.join("base.toml")).required(false))
+            // Service-specific config (required)
             .add_source(File::from(
-                PathBuf::from(&config_dir).join(&env).join("base.toml"),
-            ))
-            // Service-specific config
-            .add_source(File::from(
-                PathBuf::from(&config_dir)
-                    .join(&env)
-                    .join(format!("{}.toml", service_name)),
+                config_dir.join(format!("{}.toml", service_name)),
             ))
             // Environment variables override
             .add_source(Environment::with_prefix("LUFFY"))

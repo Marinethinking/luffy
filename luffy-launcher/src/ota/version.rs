@@ -1,36 +1,32 @@
 use crate::config::CONFIG;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use reqwest;
 use semver::Version;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::process::Command;
-use std::str::FromStr;
+use tokio::fs;
 use tokio::time::{interval, Duration};
 use tracing::{info, warn};
 
 #[derive(Debug, Deserialize)]
-struct DockerHubResponse {
-    count: u32,
-    next: Option<String>,
-    previous: Option<String>,
-    results: Vec<DockerTag>,
+struct GithubRelease {
+    tag_name: String,
+    assets: Vec<GithubAsset>,
 }
 
 #[derive(Debug, Deserialize)]
-struct DockerTag {
+struct GithubAsset {
     name: String,
-    last_updated: String,
-    tag_status: String,
-    // We can add other fields if needed, but these are the essential ones
+    browser_download_url: String,
 }
-
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VersionManager {
     strategy: String,
     current_version: String,
     check_interval: Duration,
+    temp_dir: PathBuf,
 }
 
 impl Default for VersionManager {
@@ -45,76 +41,97 @@ impl VersionManager {
             strategy: CONFIG.ota.strategy.clone(),
             current_version: env!("CARGO_PKG_VERSION").to_string(),
             check_interval: Duration::from_secs(CONFIG.ota.check_interval as u64),
+            temp_dir: std::env::temp_dir().join("luffy-updates"),
         }
     }
 
-    pub async fn update_container(&self, version: &str) -> Result<()> {
-        let image_name = &format!("{}:{}", CONFIG.ota.image_name, version);
-        info!("Pulling image: {}", image_name);
-        println!("Pulling image: {}", image_name);
-        Command::new("docker").args(["pull", image_name]).status()?;
-        Ok(())
+    async fn download_deb(&self, url: &str, version: &str) -> Result<PathBuf> {
+        // Create temp directory if it doesn't exist
+        fs::create_dir_all(&self.temp_dir).await?;
+
+        let deb_path = self.temp_dir.join(format!("luffy-{}.deb", version));
+
+        // Download the file
+        let response = reqwest::get(url).await?;
+        let bytes = response.bytes().await?;
+        fs::write(&deb_path, bytes).await?;
+
+        Ok(deb_path)
     }
 
-    pub async fn get_latest_version(&self) -> Result<String> {
+    pub async fn get_latest_version(&self) -> Result<(String, String)> {
         let client = reqwest::Client::new();
+        let url = format!(
+            "https://api.github.com/repos/{}/releases/latest",
+            CONFIG.ota.github_repo
+        );
 
-        let response = client
-            .get(&CONFIG.ota.version_check_url)
-            .header("User-Agent", "luffy-updater")
-            .send()
-            .await
-            .map_err(|e| {
-                warn!("Failed to send request: {}", e);
-                e
-            })?;
+        let mut request = client.get(&url).header("User-Agent", "luffy-updater");
+
+        // Add authorization token if provided
+        if let Some(token) = &CONFIG.ota.github_token {
+            request = request.header("Authorization", format!("token {}", token));
+        }
+
+        let response = request.send().await.context("Failed to fetch releases")?;
 
         if !response.status().is_success() {
-            warn!("Request failed with status: {}", response.status());
             return Err(anyhow!(
-                "HTTP request failed with status: {}",
+                "GitHub API request failed with status: {}",
                 response.status()
             ));
         }
 
-        let body = response.text().await.map_err(|e| {
-            warn!("Failed to get response body: {}", e);
-            e
-        })?;
+        let release: GithubRelease = response.json().await?;
+        
+        // Find the .deb asset
+        let deb_asset = release
+            .assets
+            .iter()
+            .find(|asset| asset.name.ends_with(".deb"))
+            .ok_or_else(|| anyhow!("No .deb package found in release"))?;
 
-        let tags: DockerHubResponse = serde_json::from_str(&body).map_err(|e| {
-            warn!("Failed to parse JSON: {} - Response: {}", e, body);
-            anyhow!("JSON parsing error: {}", e)
-        })?;
+        Ok((release.tag_name.clone(), deb_asset.browser_download_url.clone()))
+    }
 
-        let latest = tags
-            .results
-            .into_iter()
-            .filter(|t| {
-                t.name != "latest"
-                    && t.tag_status == "active"
-                    && Version::parse(&t.name.trim_start_matches('v')).is_ok()
-            })
-            .max_by(|a, b| {
-                let ver_a = Version::parse(&a.name.trim_start_matches('v')).unwrap();
-                let ver_b = Version::parse(&b.name.trim_start_matches('v')).unwrap();
-                ver_a.cmp(&ver_b)
-            })
-            .ok_or_else(|| anyhow!("No valid version tags found"))?;
+    pub async fn update_package(&self, version: &str, url: &str) -> Result<()> {
+        info!("Downloading new version {} from {}", version, url);
+        let deb_path = self.download_deb(url, version).await?;
 
-        Ok(latest.name.clone())
+        info!("Installing new package");
+        let status = Command::new("sudo")
+            .args(["dpkg", "-i"])
+            .arg(deb_path.to_str().unwrap())
+            .status()
+            .context("Failed to install package")?;
+
+        if !status.success() {
+            return Err(anyhow!("Package installation failed"));
+        }
+
+        // Clean up downloaded file
+        fs::remove_file(deb_path).await?;
+
+        Ok(())
     }
 
     pub async fn check_and_apply_updates(&self) -> Result<()> {
-        let latest_version = self.get_latest_version().await?;
+        let (latest_version, download_url) = self.get_latest_version().await?;
+        
         let current = Version::parse(&self.current_version)?;
-        let latest_version_trimmed = latest_version.trim_start_matches('v');
-        let latest = Version::parse(latest_version_trimmed)?;
+        let latest = Version::parse(latest_version.trim_start_matches('v'))?;
 
         if latest > current {
             info!("New version available: {} -> {}", current, latest);
-            match self.update_container(&latest_version).await {
-                Ok(_) => info!("Update successful"),
+            match self.update_package(&latest_version, &download_url).await {
+                Ok(_) => {
+                    info!("Update successful");
+                    // Restart the service
+                    Command::new("sudo")
+                        .args(["systemctl", "restart", &CONFIG.ota.service_name])
+                        .status()
+                        .context("Failed to restart service")?;
+                }
                 Err(e) => warn!("Update failed: {}", e),
             }
         } else {

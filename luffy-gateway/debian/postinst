@@ -1,0 +1,35 @@
+#!/bin/sh
+set -e
+
+# Debug logging
+echo "postinst script called with argument: $1"
+
+# Create luffy user if it doesn't exist
+if ! getent passwd luffy >/dev/null; then
+    useradd -r -s /bin/false luffy
+fi
+
+# Set permissions
+chown -R luffy:luffy /etc/luffy
+
+# Reload systemd
+systemctl daemon-reload
+
+# Enable and start service if not already running
+if [ "$1" = "configure" ]; then
+    echo "Configuring service..."
+    
+    # First unmask the service if it's masked
+    systemctl unmask luffy-gateway.service || true
+    
+    # Then enable and start
+    if ! systemctl enable luffy-gateway.service; then
+        echo "Warning: Failed to enable service, but continuing..."
+    fi
+    
+    if ! systemctl start luffy-gateway.service; then
+        echo "Warning: Failed to start service, but continuing..."
+    fi
+fi
+
+#DEBHELPER#

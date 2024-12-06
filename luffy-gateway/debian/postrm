@@ -1,0 +1,21 @@
+#!/bin/sh
+set -e
+
+# Stop and disable service
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+    systemctl stop luffy-gateway.service || true
+    systemctl disable luffy-gateway.service || true
+    systemctl daemon-reload
+fi
+
+# Remove luffy user and group if purging
+if [ "$1" = "purge" ]; then
+    if getent passwd luffy >/dev/null; then
+        userdel luffy || true
+    fi
+    if getent group luffy >/dev/null; then
+        groupdel luffy || true
+    fi
+fi
+
+#DEBHELPER#

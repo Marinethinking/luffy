@@ -25,8 +25,9 @@ pub struct WebConfig {
 pub struct OtaConfig {
     pub strategy: String,
     pub check_interval: u32,
-    pub version_check_url: String,
-    pub image_name: String,
+    pub github_repo: String,
+    pub github_token: Option<String>,
+    pub service_name: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]

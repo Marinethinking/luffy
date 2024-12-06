@@ -1,6 +1,7 @@
+use std::env;
+
 use crate::config::CONFIG;
 use crate::monitor::vehicle::{Vehicle, VehicleState};
-use crate::ota::version::VERSION;
 use askama::Template;
 use axum::{
     response::{Html, IntoResponse},
@@ -47,7 +48,7 @@ impl From<VehicleState> for StatusViewModel {
             broker_connected: true,  // Replace with actual status
 
             // Add version
-            version: VERSION.to_string(),
+            version: env::var("VERSION").unwrap_or_else(|_| "unknown".to_string()),
         }
     }
 }

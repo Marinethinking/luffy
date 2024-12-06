@@ -22,16 +22,17 @@ mod ota_tests {
         assert!(!current.is_empty());
         println!("Current version: {}", current);
 
-        // Check latest version from Docker Hub
-        let latest = version_manager.get_latest_version().await?;
-        assert!(!latest.is_empty());
-        println!("Latest version: {}", latest);
+        // Check latest version from GitHub
+        let (latest_version, download_url) = version_manager.get_latest_version().await?;
+        assert!(!latest_version.is_empty());
+        assert!(download_url.ends_with(".deb"));
+        println!("Latest version: {} ({})", latest_version, download_url);
 
         Ok(())
     }
 
     #[tokio::test]
-    async fn test_docker_update() -> Result<()> {
+    async fn test_deb_update() -> Result<()> {
         init_logger();
         let version_manager = VersionManager::new();
 

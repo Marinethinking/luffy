@@ -104,6 +104,14 @@ impl AwsClient {
 
     fn save_credentials(&self, credentials: &IotCredentials) -> Result<()> {
         info!("Saving credentials...");
+
+        match std::env::var("RUST_ENV").as_deref() {
+            Ok("dev") => self.save_credentials_dev(credentials),
+            _ => self.save_credentials_deb(credentials),
+        }
+    }
+
+    fn save_credentials_dev(&self, credentials: &IotCredentials) -> Result<()> {
         let config_dir = dirs::config_dir()
             .context("Failed to get config directory")?
             .join("luffy");
@@ -120,7 +128,37 @@ impl AwsClient {
             config_dir.join("certificate.arn"),
             &credentials.certificate_arn,
         )?;
-        info!("Credentials saved successfully");
+        info!("Credentials saved successfully in dev mode");
+        Ok(())
+    }
+
+    fn save_credentials_deb(&self, credentials: &IotCredentials) -> Result<()> {
+        let config_dir = std::path::PathBuf::from("/etc/luffy");
+
+        // Create directory with proper permissions (readable by owner and group)
+        if !config_dir.exists() {
+            fs::create_dir_all(&config_dir).context("Failed to create config directory")?;
+            // Set directory permissions to 755 (rwxr-xr-x)
+            let mut perms = fs::metadata(&config_dir)?.permissions();
+            std::os::unix::fs::PermissionsExt::set_mode(&mut perms, 0o755);
+            fs::set_permissions(&config_dir, perms)?;
+        }
+
+        // Save certificate and private key to files with restricted permissions
+        for (filename, content) in [
+            ("certificate.pem", &credentials.certificate_pem),
+            ("private.key", &credentials.private_key),
+            ("certificate.arn", &credentials.certificate_arn),
+        ] {
+            let path = config_dir.join(filename);
+            fs::write(&path, content).with_context(|| format!("Failed to write {}", filename))?;
+            // Set file permissions to 640 (rw-r-----)
+            let mut perms = fs::metadata(&path)?.permissions();
+            std::os::unix::fs::PermissionsExt::set_mode(&mut perms, 0o640);
+            fs::set_permissions(&path, perms)?;
+        }
+
+        info!("Credentials saved successfully in deb mode");
         Ok(())
     }
 

@@ -11,7 +11,7 @@
             "preLaunchTask": "cargo build",
             "env": {
                 "RUST_LOG": "debug",
-                "RUST_ENV": "development",
+                "RUST_ENV": "dev",
            
             },
             "sourceLanguages": ["rust"]
@@ -26,7 +26,7 @@
             "preLaunchTask": "cargo build",
             "env": {
                 "RUST_LOG": "debug",
-                "RUST_ENV": "development"
+                "RUST_ENV": "dev"
             },
             "sourceLanguages": ["rust"]
         }

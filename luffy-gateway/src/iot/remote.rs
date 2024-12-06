@@ -41,6 +41,7 @@ impl RemoteIotClient {
                 .register_device()
                 .await
                 .context("Failed to register device")?;
+            //TODO: remove aws credentials on production
         }
 
         let mqtt_client = self.connect().await?;
@@ -101,9 +102,12 @@ impl RemoteIotClient {
     }
 
     async fn connect(&self) -> Result<AsyncClient> {
-        let config_dir = dirs::config_dir()
-            .context("Failed to get config directory")?
-            .join("luffy");
+        let config_dir = match std::env::var("RUST_ENV").as_deref() {
+            Ok("dev") => dirs::config_dir()
+                .context("Failed to get config directory")?
+                .join("luffy"),
+            _ => std::path::PathBuf::from("/etc/luffy"),
+        };
 
         let cert_path = config_dir.join("certificate.pem");
         let key_path = config_dir.join("private.key");
@@ -205,10 +209,13 @@ impl RemoteIotClient {
     }
 
     fn is_registered(&self) -> bool {
-        let config_dir = dirs::config_dir()
-            .context("Failed to get config directory")
-            .unwrap()
-            .join("luffy");
+        let config_dir = match std::env::var("RUST_ENV").as_deref() {
+            Ok("dev") => dirs::config_dir()
+                .context("Failed to get config directory")
+                .unwrap()
+                .join("luffy"),
+            _ => std::path::PathBuf::from("/etc/luffy"),
+        };
 
         let cert_path = config_dir.join("certificate.pem");
         cert_path.exists()
