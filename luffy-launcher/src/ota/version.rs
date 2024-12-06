@@ -134,25 +134,9 @@ impl VersionManager {
                 .push(package);
         }
 
-        // Create backup of current versions
-        let mut version_backup = HashMap::new();
-        for packages in updates_by_service.values() {
-            for (filename, _) in packages {
-                let package_name = filename.split('_').next().unwrap_or("");
-                if let Ok(current_version) =
-                    self.deb_manager.get_installed_version(package_name).await
-                {
-                    version_backup.insert(package_name.to_string(), current_version);
-                }
-            }
-        }
-
         // Process updates service by service
         for (service_type, packages) in &updates_by_service {
-            if let Err(e) = self
-                .update_service(service_type, packages, &version_backup)
-                .await
-            {
+            if let Err(e) = self.update_service(service_type, packages).await {
                 warn!("Failed to update {:?}: {}", service_type, e);
                 return Err(e);
             }
@@ -166,7 +150,6 @@ impl VersionManager {
         &self,
         service_type: &ServiceType,
         packages: &[(String, String)],
-        version_backup: &HashMap<String, String>,
     ) -> Result<()> {
         info!("Processing updates for {:?}", service_type);
 
@@ -200,7 +183,18 @@ impl VersionManager {
         }
 
         if install_failed {
-            warn!("Update failed for {:?}", service_type);
+            warn!("Update failed for {:?}, attempting rollback", service_type);
+            // Try to rollback using last installed version
+            for (filename, _) in packages {
+                let package_name = filename.split('_').next().unwrap_or("");
+                if !self
+                    .deb_manager
+                    .install_from_last_installed(package_name)
+                    .await?
+                {
+                    warn!("Rollback failed for {}", package_name);
+                }
+            }
             return Err(anyhow!("Service update failed"));
         }
 

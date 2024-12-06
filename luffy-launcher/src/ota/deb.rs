@@ -128,19 +128,16 @@ impl DebManager {
             self.cleanup_package_files(package_name).await?;
             Ok(true)
         } else {
-            // Try to rollback using last installed version
-            if let Ok(last_installed) = self.find_last_installed(package_name).await {
-                warn!("Installation failed, rolling back to {:?}", last_installed);
-                let rollback_status = Command::new("sudo")
-                    .args(["dpkg", "-i"])
-                    .arg(last_installed.to_str().unwrap())
-                    .status()
-                    .context("Failed to rollback")?;
-                
-                if !rollback_status.success() {
-                    warn!("Rollback failed!");
-                }
-            }
+            Ok(false)
+        }
+    }
+
+    pub async fn install_from_last_installed(&self, package_name: &str) -> Result<bool> {
+        if let Ok(last_installed) = self.find_last_installed(package_name).await {
+            warn!("Installing from last known good version: {:?}", last_installed);
+            self.install_package(&last_installed).await
+        } else {
+            warn!("No previous installed version found for {}", package_name);
             Ok(false)
         }
     }
