@@ -12,7 +12,7 @@ use tracing::{error, info};
 #[tokio::main]
 async fn main() -> Result<()> {
     let log_level = &CONFIG.log_level;
-    luffy_common::util::setup_logging(log_level);
+    luffy_common::util::setup_logging(log_level, "gateway");
     info!("Application starting...");
 
     info!("Region: {:?}", &CONFIG.aws.region);

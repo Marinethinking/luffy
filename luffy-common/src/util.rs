@@ -2,9 +2,11 @@ use crate::config::BaseConfig;
 use network_interface::{NetworkInterface, NetworkInterfaceConfig};
 use uuid::Uuid;
 
-use tracing::{error, info};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::Layer;
+
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::EnvFilter;
 
 pub fn get_vehicle_id(config: &BaseConfig) -> String {
@@ -32,16 +34,75 @@ pub fn get_mac_address() -> String {
     Uuid::new_v4().to_string()
 }
 
-pub fn setup_logging(log_level: &str) {
+fn setup_dev_logging(log_level: &str) {
+    let console_layer = tracing_subscriber::fmt::layer()
+        .with_thread_ids(true)
+        .with_thread_names(true)
+        .with_target(true)
+        .with_file(true)
+        .with_line_number(true)
+        .pretty();
+
     tracing_subscriber::registry()
+        .with(console_layer)
+        .with(
+            EnvFilter::from_default_env()
+                .add_directive(log_level.parse().unwrap())
+                .add_directive("tokio=debug".parse().unwrap())
+                .add_directive("runtime=debug".parse().unwrap())
+                .add_directive("rumqttc=info".parse().unwrap())
+                .add_directive("rumqttd=info".parse().unwrap()),
+        )
+        .try_init()
+        .expect("Failed to initialize logging");
+}
+
+fn setup_prod_logging(log_level: &str, service_name: &str) -> bool {
+    let log_dir = "/var/log/luffy";
+    if std::fs::create_dir_all(log_dir).is_err() {
+        return false;
+    }
+
+    let console_layer = tracing_subscriber::fmt::layer()
+        .with_thread_ids(true)
+        .with_thread_names(true)
+        .with_target(true)
+        .with_file(true)
+        .with_line_number(true)
+        .pretty();
+
+    let all_log_appender = RollingFileAppender::new(
+        Rotation::DAILY,
+        log_dir,
+        format!("{}-all.log", service_name),
+    );
+
+    let error_log_appender = RollingFileAppender::new(
+        Rotation::DAILY,
+        log_dir,
+        format!("{}-error.log", service_name),
+    );
+
+    tracing_subscriber::registry()
+        .with(console_layer)
         .with(
             tracing_subscriber::fmt::layer()
+                .with_writer(all_log_appender)
+                .with_thread_ids(true)
+                .with_thread_names(true)
+                .with_target(true)
+                .with_file(true)
+                .with_line_number(true),
+        )
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(error_log_appender)
                 .with_thread_ids(true)
                 .with_thread_names(true)
                 .with_target(true)
                 .with_file(true)
                 .with_line_number(true)
-                .pretty(),
+                .with_filter(EnvFilter::new("error")),
         )
         .with(
             EnvFilter::from_default_env()
@@ -53,6 +114,19 @@ pub fn setup_logging(log_level: &str) {
         )
         .try_init()
         .expect("Failed to initialize logging");
+
+    true
+}
+
+pub fn setup_logging(log_level: &str, service_name: &str) {
+    let is_dev = std::env::var("RUST_ENV")
+        .unwrap_or("test".to_string())
+        .to_lowercase()
+        == "dev";
+
+    if is_dev || !setup_prod_logging(log_level, service_name) {
+        setup_dev_logging(log_level)
+    }
 }
 
 pub fn is_dev() -> bool {

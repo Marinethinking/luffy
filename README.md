@@ -10,41 +10,18 @@ A smart vehicle onboard program that provides network connectivity and web-based
 - **Command**: Command subscription from upstream node to vehicle
 - **OTA**: Over-the-air update for the vehicle
 
+```
 luffy/
 ├── luffy-launcher/       # Main launcher/orchestrator
 ├── luffy-gateway/       # Communication services
 ├── luffy-video/         # Video processing service
 ├── luffy-common/        # Shared libraries
 └── luffy-deploy/        # Deployment configurations
+```
 
 ## Installation
 
-### Using Docker
-#### Option 1: Using Docker Compose (Recommended)
-```bash
-# Clone the repository
-git clone https://github.com/marinethinking/luffy.git
-cd luffy/docker
-
-# Start services with self update
-docker compose up -d
-```
-
-#### Option 2: Manual Docker Run
-```bash
-docker run -d \
-  --name luffy \
-  --network host \
-  --restart unless-stopped \
-  -p 9000:9000 \
-  -v $HOME/.aws:/root/.aws \
-  mt2025/luffy:latest
-```
-
-### Build image from source
-```bash
-sudo docker buildx build --platform linux/arm64,linux/amd64 -t mt2025/luffy:v0.3.1 -t mt2025/luffy:latest -f docker/Dockerfile --push --load .
-```
+Follow [luffy-deploy/README.md](luffy-deploy/README.md)
 
 ## Development Setup
 
@@ -57,15 +34,7 @@ sudo docker buildx build --platform linux/arm64,linux/amd64 -t mt2025/luffy:v0.3
   - `cargo install cargo-edit`   
   - `cargo install cargo-watch`  -> `cargo watch -d 2000 -x run`
 
-### Configuration
-1. Configure `config/dev.toml`:
-   - Set mavlink URL
-   - Configure OTA settings (for release):
-     - `check_interval`
-     - `version_check_url`
-     - `s3_bucket`
-     - `bin_name`
-     - `release_path`
+
 
 ### VSCode Setup
 Add to settings.json (Cmd/Ctrl + ,):

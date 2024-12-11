@@ -12,7 +12,7 @@ mod ota_tests {
     fn init() {
         env::set_var("RUST_ENV", "dev");
 
-        luffy_common::util::setup_logging("debug");
+        luffy_common::util::setup_logging("debug", "luffy-launcher");
     }
 
     #[tokio::test]
