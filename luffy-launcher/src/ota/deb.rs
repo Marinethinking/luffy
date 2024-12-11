@@ -134,7 +134,10 @@ impl DebManager {
 
     pub async fn install_from_last_installed(&self, package_name: &str) -> Result<bool> {
         if let Ok(last_installed) = self.find_last_installed(package_name).await {
-            warn!("Installing from last known good version: {:?}", last_installed);
+            warn!(
+                "Installing from last known good version: {:?}",
+                last_installed
+            );
             self.install_package(&last_installed).await
         } else {
             warn!("No previous installed version found for {}", package_name);
@@ -144,13 +147,18 @@ impl DebManager {
 
     pub async fn rollback_package(&self, package_name: &str, version: &str) -> Result<()> {
         info!("Rolling back {} to version {}", package_name, version);
+
+        // Find the backup .deb file for this version
+        let backup_filename = format!("{}_{}_{}", package_name, version, "backup.deb");
+        let backup_path = self.work_dir.join(&backup_filename);
+
+        if !backup_path.exists() {
+            return Err(anyhow!("Backup file not found for version {}", version));
+        }
+
         let status = Command::new("sudo")
-            .args([
-                "apt-get",
-                "install",
-                "-y",
-                &format!("{}={}", package_name, version),
-            ])
+            .args(["dpkg", "-i"])
+            .arg(backup_path.to_str().unwrap())
             .status()
             .context(format!("Failed to rollback {}", package_name))?;
 
@@ -162,19 +170,35 @@ impl DebManager {
 
     pub async fn stop_service(&self, service_type: &ServiceType) -> Result<()> {
         let service_name = self.get_service_name(service_type);
-        Command::new("sudo")
-            .args(["systemctl", "stop", &service_name])
-            .status()
-            .context("Failed to stop service")?;
+
+        #[cfg(target_os = "linux")]
+        {
+            Command::new("sudo")
+                .args(["systemctl", "stop", &service_name])
+                .status()
+                .context("Failed to stop service")?;
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            warn!("Service control is only supported on Linux systems");
+        }
         Ok(())
     }
 
     pub async fn start_service(&self, service_type: &ServiceType) -> Result<()> {
         let service_name = self.get_service_name(service_type);
-        Command::new("sudo")
-            .args(["systemctl", "start", &service_name])
-            .status()
-            .context("Failed to start service")?;
+
+        #[cfg(target_os = "linux")]
+        {
+            Command::new("sudo")
+                .args(["systemctl", "start", &service_name])
+                .status()
+                .context("Failed to start service")?;
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            warn!("Service control is only supported on Linux systems");
+        }
         Ok(())
     }
 
@@ -195,20 +219,26 @@ impl DebManager {
     }
 
     async fn mark_as_installed(&self, deb_path: &PathBuf) -> Result<PathBuf> {
-        let filename = deb_path.file_name()
+        let filename = deb_path
+            .file_name()
             .and_then(|f| f.to_str())
             .ok_or_else(|| anyhow!("Invalid deb path"))?;
-        
+
         let installed_name = filename.replace(".deb", "_installed.deb");
         let installed_path = self.work_dir.join(&installed_name);
-        
+
         fs::rename(deb_path, &installed_path).await?;
+        info!("Marked as installed: {:?}", installed_path);
         Ok(installed_path)
     }
 
     async fn find_last_installed(&self, package_name: &str) -> Result<PathBuf> {
-        let files = self.get_sorted_package_files(package_name, "_installed.deb").await?;
-        files.first()
+        let files = self
+            .get_sorted_package_files(package_name, "_installed.deb")
+            .await?;
+        info!("Found installed files: {:?}", files);
+        files
+            .first()
             .map(|entry| entry.path())
             .ok_or_else(|| anyhow!("No installed version found for {}", package_name))
     }
@@ -221,6 +251,19 @@ impl DebManager {
                 fs::remove_file(entry.path()).await?;
             }
         }
+        info!("Cleaned up package files for {}", package_name);
         Ok(())
+    }
+
+    pub fn is_package_installed(&self, package_name: &str) -> bool {
+        let output = std::process::Command::new("dpkg")
+            .arg("-l")
+            .arg(package_name)
+            .output();
+
+        match output {
+            Ok(output) => output.status.success(),
+            Err(_) => false,
+        }
     }
 }

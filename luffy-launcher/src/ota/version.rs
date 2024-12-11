@@ -113,7 +113,7 @@ impl VersionManager {
     }
 
     pub async fn update_package(&self, packages: Vec<(String, String)>) -> Result<()> {
-        // Filter out launcher updates
+        // Filter out launcher updates, we will update luffy-launcher from lufy-gateway
         let service_packages: Vec<(String, String)> = packages
             .into_iter()
             .filter(|(filename, _)| !filename.starts_with("luffy-launcher"))
@@ -207,7 +207,21 @@ impl VersionManager {
     }
 
     pub async fn check_and_apply_updates(&self) -> Result<()> {
-        let (latest_version, packages) = self.get_latest_version().await?;
+        let (latest_version, all_packages) = self.get_latest_version().await?;
+
+        // Filter packages to only include those that are currently installed
+        let packages: Vec<(String, String)> = all_packages
+            .into_iter()
+            .filter(|(filename, _)| {
+                let package_name = filename.split('_').next().unwrap_or("");
+                self.deb_manager.is_package_installed(package_name)
+            })
+            .collect();
+
+        if packages.is_empty() {
+            info!("No installed packages to update");
+            return Ok(());
+        }
 
         let current = Version::parse(&self.current_version)?;
         let latest = Version::parse(latest_version.trim_start_matches('v'))?;

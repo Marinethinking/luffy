@@ -34,3 +34,21 @@ futures = "0.3"
 [dev-dependencies]
 tempfile = "3.14"
 
+[package.metadata.deb]
+maintainer = "Marine Thinking <liang.huang@marinethinking.com>"
+copyright = "2024, Marine Thinking <liang.huang@marinethinking.com>"
+depends = "$auto"
+section = "utility"
+priority = "optional"
+assets = [
+    ["target/release/luffy-launcher", "usr/bin/", "755"],
+    ["../luffy-deploy/config/development/launcher.toml", "etc/luffy/", "644"],
+    ["../luffy-deploy/config/development/base.toml", "etc/luffy/", "644"],
+    ["../luffy-deploy/scripts/luffy-launcher.service", "lib/systemd/system/", "644"],
+]
+conf-files = [
+    "/etc/luffy/base.toml",
+    "/etc/luffy/launcher.toml"
+]
+systemd-units = { unit-name = "luffy-launcher", enable = true, start = true }
+maintainer-scripts = "debian/"

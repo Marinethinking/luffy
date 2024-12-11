@@ -41,14 +41,14 @@ if [ "$1" = "configure" ]; then
     echo "Configuring service..."
     
     # First unmask the service if it's masked
-    systemctl unmask luffy-gateway.service || true
+    systemctl unmask luffy-launcher.service || true
     
     # Then enable and start
-    if ! systemctl enable luffy-gateway.service; then
+    if ! systemctl enable luffy-launcher.service; then
         echo "Warning: Failed to enable service, but continuing..."
     fi
     
-    if ! systemctl start luffy-gateway.service; then
+    if ! systemctl start luffy-launcher.service; then
         echo "Warning: Failed to start service, but continuing..."
     fi
 fi

@@ -1,8 +1,9 @@
 ## Build deb package
 
-cd luffy-deploy
+
 
 ```bash
+cd luffy-deploy
 # build for all components
 sudo sh ./scripts/build-deb.sh 
 # build for luffy-gateway
