@@ -241,7 +241,7 @@ impl VersionManager {
     pub async fn start(&self) -> Result<()> {
         if luffy_common::util::is_dev() {
             info!("Skipping auto update in dev mode");
-            return Ok(());
+            // return Ok(());
         }
 
         match self.strategy.as_str() {

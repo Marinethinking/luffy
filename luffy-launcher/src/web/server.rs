@@ -1,4 +1,5 @@
 use std::{
+    path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -10,7 +11,10 @@ use axum::Router;
 use tower_http::services::ServeDir;
 
 use super::index_page;
-use crate::{config::{LauncherConfig, CONFIG}, monitor::vehicle::Vehicle};
+use crate::{
+    config::{LauncherConfig, CONFIG},
+    monitor::vehicle::Vehicle,
+};
 
 use anyhow::{Context, Result};
 
@@ -30,18 +34,56 @@ impl WebServer {
     pub async fn start(&self) -> Result<()> {
         let vehicle = self.vehicle;
 
+        // For development, first try the luffy-launcher/static directory
+        let static_dir = if cfg!(debug_assertions) {
+            // Get workspace root
+            let workspace_root = std::env::current_dir()?;
+
+            // Try luffy-launcher/static first
+            let launcher_static = workspace_root.join("luffy-launcher").join("static");
+            if launcher_static.exists() {
+                launcher_static
+            } else {
+                // Fallback to executable directory
+                std::env::current_exe()?
+                    .parent()
+                    .context("Failed to get executable directory")?
+                    .join("static")
+            }
+        } else {
+            // Production: use executable adjacent path
+            std::env::current_exe()?
+                .parent()
+                .context("Failed to get executable directory")?
+                .join("static")
+        };
+
+        // Add debug logging
+        tracing::debug!("Current working directory: {:?}", std::env::current_dir()?);
+        tracing::debug!("Static directory path: {:?}", static_dir);
+
+        // Verify the static directory exists
+        if !static_dir.exists() {
+            tracing::warn!("Static directory does not exist at {:?}", static_dir);
+            tracing::warn!(
+                "Please create the static directory at: {}",
+                std::env::current_dir()?
+                    .join("luffy-launcher")
+                    .join("static")
+                    .display()
+            );
+        }
+
         // Create the main router
         let app = Router::new()
-            // Merge routes from index_page
             .merge(index_page::routes(vehicle))
-            // Serve static files
-            .nest_service("/static", ServeDir::new("static"));
+            .nest_service("/static", ServeDir::new(&static_dir));
 
         self.running.store(true, Ordering::SeqCst);
 
         let host = CONFIG.web.host.clone();
         let port = CONFIG.web.port;
-        println!("Starting web server on http://{}:{}", host, port);
+        tracing::info!("Starting web server on http://{}:{}", host, port);
 
         let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port))
             .await

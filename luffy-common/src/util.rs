@@ -6,6 +6,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
 
+use glob::Pattern;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::EnvFilter;
 
@@ -134,4 +135,11 @@ pub fn is_dev() -> bool {
         .unwrap_or("test".to_string())
         .to_lowercase()
         == "dev"
+}
+
+pub fn glob_match(pattern: &str, topic: &str) -> bool {
+    let glob_pattern = pattern.replace('+', "*").replace('#', "**");
+
+    let pattern = Pattern::new(&glob_pattern).unwrap();
+    pattern.matches(topic)
 }

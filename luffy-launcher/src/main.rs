@@ -1,4 +1,7 @@
-use luffy_launcher::{config::CONFIG, ota::version::VersionManager, web::server::WebServer};
+use luffy_launcher::{
+    config::CONFIG, monitor::mqtt::MqttMonitor, ota::version::VersionManager,
+    web::server::WebServer,
+};
 
 use tokio::signal;
 use tokio::sync::broadcast;
@@ -19,6 +22,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Spawn web console task with shutdown signal
     let web_handle = spawn_web_server(shutdown_tx.subscribe()).await;
 
+    let monitor_handle = spawn_monitor_server(shutdown_tx.subscribe()).await;
+
     // Handle shutdown signal
     let shutdown_signal = async {
         match signal::ctrl_c().await {
@@ -35,13 +40,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Wait for all tasks to complete
-    let results = tokio::join!(ota_handle, web_handle, shutdown_signal);
+    let results = tokio::join!(ota_handle, web_handle, monitor_handle, shutdown_signal);
 
     // Check for errors
-    for (result, name) in [results.0, results.1]
-        .into_iter()
-        .zip(["OTA checker", "Web console"])
-    {
+    for (result, name) in [results.0, results.1, results.2].into_iter().zip([
+        "OTA checker",
+        "Web console",
+        "MQTT monitor",
+    ]) {
         if let Err(e) = result {
             error!("{} join error: {}", name, e);
         }
@@ -73,6 +79,28 @@ async fn spawn_web_server(mut shutdown: broadcast::Receiver<()>) -> tokio::task:
             _ = web.start() => {}
             _ = shutdown.recv() => {
                 info!("Shutting down web console...");
+            }
+        }
+    })
+}
+
+async fn spawn_monitor_server(
+    mut shutdown: broadcast::Receiver<()>,
+) -> tokio::task::JoinHandle<()> {
+    let mut monitor = MqttMonitor::new(
+        "launcher".to_string(),
+        CONFIG.base.mqtt_host.to_string(),
+        CONFIG.base.mqtt_port,
+    );
+    tokio::spawn(async move {
+        tokio::select! {
+            result = monitor.start() => {
+                if let Err(e) = result {
+                    error!("MQTT monitor error: {}", e);
+                }
+            }
+            _ = shutdown.recv() => {
+                info!("Shutting down MQTT monitor...");
             }
         }
     })

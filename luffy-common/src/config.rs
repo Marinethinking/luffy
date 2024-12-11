@@ -6,6 +6,8 @@ use std::path::PathBuf;
 #[derive(Debug, Deserialize)]
 pub struct BaseConfig {
     pub vehicle_id: String,
+    pub mqtt_host: String,
+    pub mqtt_port: u16,
 }
 
 pub trait LoadConfig {

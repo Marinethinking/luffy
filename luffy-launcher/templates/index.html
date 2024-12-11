@@ -4,21 +4,13 @@
 <head>
     <title>Vehicle Control System</title>
     <link rel="stylesheet" href="/static/css/main.css">
-    <!-- Basic favicon -->
+    <!-- Change these lines -->
     <link rel="icon" type="image/x-icon" href="/static/favicon_io/favicon.ico">
-
-    <!-- PNG icons for different sizes -->
     <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon_io/favicon-16x16.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon_io/favicon-32x32.png">
-
-    <!-- Android Chrome -->
     <link rel="icon" type="image/png" sizes="192x192" href="/static/favicon_io/android-chrome-192x192.png">
     <link rel="icon" type="image/png" sizes="512x512" href="/static/favicon_io/android-chrome-512x512.png">
-
-    <!-- iOS Safari -->
     <link rel="apple-touch-icon" href="/static/favicon_io/apple-touch-icon.png">
-
-    <!-- Web App Manifest -->
     <link rel="manifest" href="/static/favicon_io/site.webmanifest">
 </head>
 
@@ -140,8 +132,8 @@
                 // Add version update
                 document.querySelector('.version-info span').textContent = `Version: ${data.version}`;
 
-                // Add vehicle ID update
                 document.querySelector('.vehicle-id').textContent = `Vehicle ID: ${data.vehicle_id}`;
+                document.querySelector('.version-info span').textContent = `Version: ${data.version}`;
             } catch (error) {
                 console.error('Error updating UI:', error);
             }

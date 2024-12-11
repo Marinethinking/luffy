@@ -12,6 +12,7 @@ serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
+config.workspace = true
 
 rumqttc.workspace = true
 askama = "0.12"
@@ -20,7 +21,7 @@ aws-sdk-dynamodb = {version = "1.54", features = ["rustls"]}
 aws-sdk-lambda = {version = "1.59", features = ["rustls"]}
 aws-sdk-s3 = {version = "1.63.0", features = ["rustls"]}
 axum = "0.7"
-config = "0.14"
+
 dirs = "5.0"
 mavlink = "0.13"
 num-traits = "0.2"

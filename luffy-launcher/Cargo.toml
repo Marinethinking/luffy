@@ -18,6 +18,7 @@ tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 uuid.workspace = true
+glob.workspace = true
 
 axum = "0.7"
 askama = "0.12"

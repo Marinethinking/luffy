@@ -48,7 +48,7 @@ impl From<VehicleState> for StatusViewModel {
             broker_connected: true,  // Replace with actual status
 
             // Add version
-            version: env::var("VERSION").unwrap_or_else(|_| "unknown".to_string()),
+            version: env!("CARGO_PKG_VERSION").to_string(),
         }
     }
 }
@@ -60,6 +60,25 @@ struct IndexPage {
     status: StatusViewModel,
 }
 
+impl StatusViewModel {
+    fn new(vehicle: &Vehicle) -> Self {
+        let state = vehicle.get_state_snapshot().unwrap_or_default();
+        Self {
+            vehicle_id: util::get_vehicle_id(&CONFIG.base),
+            location: format!("{:.6}, {:.6}", state.location.0, state.location.1),
+            yaw: state.yaw_degree,
+            battery: state.battery_percentage,
+            armed: state.armed,
+            flight_mode: state.flight_mode,
+            server_status: "Running".to_string(),
+            mavlink_connected: true,
+            iot_connected: true,
+            broker_connected: true,
+            version: env!("CARGO_PKG_VERSION").to_string(), // Use compile-time version
+        }
+    }
+}
+
 pub fn routes(vehicle: &'static Vehicle) -> Router {
     Router::new()
         .route("/", get(move || index_page(vehicle)))
@@ -68,7 +87,7 @@ pub fn routes(vehicle: &'static Vehicle) -> Router {
 
 async fn index_page(vehicle: &'static Vehicle) -> impl IntoResponse {
     let template = IndexPage {
-        status: StatusViewModel::from(vehicle.get_state_snapshot().unwrap_or_default()),
+        status: StatusViewModel::new(vehicle),
     };
     Html(template.render().unwrap())
 }
