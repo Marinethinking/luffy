@@ -240,7 +240,6 @@ impl VersionManager {
 
     pub async fn start(&self) -> Result<()> {
         if luffy_common::util::is_dev() {
-            info!("Skipping auto update in dev mode");
             // return Ok(());
         }
 

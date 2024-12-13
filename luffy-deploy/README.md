@@ -1,6 +1,6 @@
 ## Build deb package
 
-
+Make sure you docker is running.
 
 ```bash
 cd luffy-deploy
