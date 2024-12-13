@@ -13,7 +13,6 @@ pub struct GatewayConfig {
     pub feature: FeatureConfig,
 
     pub aws: AwsConfig,
-    pub broker: BrokerConfig,
     pub mavlink: MavlinkConfig,
     pub iot: IotConfig,
 }
@@ -30,12 +29,6 @@ pub struct FeatureConfig {
 pub struct GeneralConfig {
     pub log_level: String,
     pub vehicle_id: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct BrokerConfig {
-    pub host: String,
-    pub port: u16,
 }
 
 #[derive(Debug, Deserialize)]

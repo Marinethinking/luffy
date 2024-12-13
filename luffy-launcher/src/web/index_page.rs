@@ -1,99 +1,136 @@
-use std::env;
-
-use crate::config::CONFIG;
-use crate::monitor::vehicle::{Vehicle, VehicleState};
 use askama::Template;
 use axum::{
     response::{Html, IntoResponse},
     routing::get,
     Json, Router,
 };
-use luffy_common::util;
 use serde::Serialize;
+use std::env;
+use std::sync::Arc;
 
-// View model for the page
+use crate::{
+    config::CONFIG,
+    monitor::{mqtt::MqttMonitor, service::ServiceStatus, vehicle::VehicleState},
+};
+use luffy_common::util;
+
+// View Models
 #[derive(Debug, Serialize)]
 pub struct StatusViewModel {
-    // Vehicle state
+    // System info
+    pub version: String,
     pub vehicle_id: String,
+
+    // Vehicle state
     pub location: String,
     pub yaw: f32,
     pub battery: f32,
     pub armed: bool,
     pub flight_mode: String,
 
-    // Server statuses
-    pub server_status: String,
-    pub mavlink_connected: bool,
-    pub iot_connected: bool,
-    pub broker_connected: bool,
-
-    // Add version field
-    pub version: String,
+    // Services
+    pub services: Vec<ServiceStatusViewModel>,
 }
 
-impl From<VehicleState> for StatusViewModel {
-    fn from(state: VehicleState) -> Self {
-        Self {
-            vehicle_id: util::get_vehicle_id(&CONFIG.base),
-            location: format!("{:.6}, {:.6}", state.location.0, state.location.1),
-            yaw: state.yaw_degree,
-            battery: state.battery_percentage,
-            armed: state.armed,
-            flight_mode: state.flight_mode,
-
-            server_status: "Running".to_string(),
-            mavlink_connected: true, // Replace with actual status
-            iot_connected: true,     // Replace with actual status
-            broker_connected: true,  // Replace with actual status
-
-            // Add version
-            version: env!("CARGO_PKG_VERSION").to_string(),
-        }
-    }
+#[derive(Debug, Serialize)]
+pub struct ServiceStatusViewModel {
+    pub name: String,
+    pub status: String,
+    pub last_health_report: String,
 }
 
-// Page template
+// Template
 #[derive(Template)]
 #[template(path = "index.html")]
 struct IndexPage {
     status: StatusViewModel,
 }
 
-impl StatusViewModel {
-    fn new(vehicle: &Vehicle) -> Self {
-        let state = vehicle.get_state_snapshot().unwrap_or_default();
+impl From<VehicleState> for StatusViewModel {
+    fn from(state: VehicleState) -> Self {
         Self {
+            version: env!("CARGO_PKG_VERSION").to_string(),
             vehicle_id: util::get_vehicle_id(&CONFIG.base),
             location: format!("{:.6}, {:.6}", state.location.0, state.location.1),
             yaw: state.yaw_degree,
             battery: state.battery_percentage,
             armed: state.armed,
             flight_mode: state.flight_mode,
-            server_status: "Running".to_string(),
-            mavlink_connected: true,
-            iot_connected: true,
-            broker_connected: true,
-            version: env!("CARGO_PKG_VERSION").to_string(), // Use compile-time version
+            services: Vec::new(),
         }
     }
 }
+// Implementation
+impl StatusViewModel {
+    async fn new() -> Self {
+        let (state, services_view) =
+            tokio::join!(Self::get_vehicle_state(), Self::get_services_state());
 
-pub fn routes(vehicle: &'static Vehicle) -> Router {
-    Router::new()
-        .route("/", get(move || index_page(vehicle)))
-        .route("/api/status", get(move || status_api(vehicle)))
+        Self {
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            vehicle_id: util::get_vehicle_id(&CONFIG.base),
+            location: format!("{:.6}, {:.6}", state.location.0, state.location.1),
+            yaw: state.yaw_degree,
+            battery: state.battery_percentage,
+            armed: state.armed,
+            flight_mode: state.flight_mode,
+            services: services_view,
+        }
+    }
+
+    async fn get_vehicle_state() -> VehicleState {
+        let monitor = MqttMonitor::instance().await.clone();
+        monitor.get_vehicle_snapshot().await.unwrap_or_default()
+    }
+
+    async fn get_services_state() -> Vec<ServiceStatusViewModel> {
+        let monitor = MqttMonitor::instance().await.clone();
+        let services = monitor.get_services_snapshot().await.unwrap_or_default();
+
+        services
+            .services
+            .iter()
+            .map(|(name, state)| ServiceStatusViewModel {
+                name: name.clone(),
+                status: match state.status {
+                    ServiceStatus::Running => "Running".to_string(),
+                    ServiceStatus::Stopped => "Stopped".to_string(),
+                    ServiceStatus::Unknown => "Unknown".to_string(),
+                },
+                last_health_report: state
+                    .last_health_report
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs()
+                    .to_string(),
+            })
+            .collect()
+    }
 }
 
-async fn index_page(vehicle: &'static Vehicle) -> impl IntoResponse {
+// Routes and Handlers
+pub async fn routes() -> Router {
+    Router::new()
+        .route("/", get(index_page))
+        .route("/api/status", get(status_api))
+}
+
+async fn index_page() -> impl IntoResponse {
     let template = IndexPage {
-        status: StatusViewModel::new(vehicle),
+        status: StatusViewModel::new().await,
     };
     Html(template.render().unwrap())
 }
 
-async fn status_api(vehicle: &'static Vehicle) -> impl IntoResponse {
-    Json(StatusViewModel::from(
-        vehicle.get_state_snapshot().unwrap_or_default(),
-    ))
+async fn status_api() -> impl IntoResponse {
+    let monitor = MqttMonitor::instance().await.clone();
+    let (vehicle_state, services_view) = tokio::join!(
+        monitor.get_vehicle_snapshot(),
+        StatusViewModel::get_services_state()
+    );
+
+    let mut status = StatusViewModel::from(vehicle_state.unwrap_or_default());
+    status.services = services_view;
+
+    Json(status)
 }

@@ -4,6 +4,7 @@ use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
 use tracing::{debug, error, info};
 
+#[derive(Clone)]
 pub struct MqttClient {
     host: String,
     port: u16,
@@ -99,7 +100,7 @@ impl MqttClient {
                         info!("🔗 Connected to broker: {:?}", ack);
                     }
                     Ok(Event::Incoming(Packet::Publish(p))) => {
-                        info!(
+                        debug!(
                             "📨 Received message - Topic: {}, Payload: {:?}",
                             p.topic,
                             String::from_utf8_lossy(&p.payload)

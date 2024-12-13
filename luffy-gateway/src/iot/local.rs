@@ -1,16 +1,17 @@
-use anyhow::{Context, Result};
-use rumqttc::{AsyncClient, QoS};
+use anyhow::Result;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
 use tracing::{debug, error, info};
 
 use crate::config::CONFIG;
 use crate::vehicle::Vehicle;
+use luffy_common::mqtt::MqttClient;
 
 pub struct LocalIotClient {
-    client: Option<AsyncClient>,
+    mqtt_client: Arc<Mutex<MqttClient>>,
     running: Arc<AtomicBool>,
 }
 
@@ -23,87 +24,44 @@ impl Default for LocalIotClient {
 impl LocalIotClient {
     pub fn new() -> Self {
         Self {
-            client: None,
+            mqtt_client: Arc::new(Mutex::new(MqttClient::new(
+                "gateway".to_string(),
+                CONFIG.base.mqtt_host.to_string(),
+                CONFIG.base.mqtt_port,
+                None, // No message handler needed for local client
+            ))),
             running: Arc::new(AtomicBool::new(true)),
         }
     }
 
     pub async fn start(&mut self) -> Result<JoinHandle<()>> {
-        info!("Starting broker client...");
-        let host = &CONFIG.broker.host;
-        let port = CONFIG.broker.port;
-        let mut mqtt_options = rumqttc::MqttOptions::new("luffy", host, port);
-        mqtt_options
-            .set_keep_alive(Duration::from_secs(30))
-            .set_clean_session(true);
+        info!("Starting local IoT client...");
 
-        let (client, mut eventloop) = rumqttc::AsyncClient::new(mqtt_options.clone(), 10);
+        let mut mqtt_client = self.mqtt_client.lock().await.clone();
+        // Connect to broker
+        let _connection_handle = mqtt_client.connect().await?;
 
-        // Spawn connection handler
-        let connection_handle = tokio::spawn(async move {
-            info!("Starting broker connection event loop");
-            loop {
-                match eventloop.poll().await {
-                    Ok(rumqttc::Event::Incoming(rumqttc::Packet::SubAck(_))) => {
-                        debug!("Subscription confirmed by iot");
-                    }
-                    Ok(rumqttc::Event::Incoming(rumqttc::Packet::ConnAck(_))) => {
-                        debug!("[IOT]Connected..... ");
-                    }
-                    Ok(rumqttc::Event::Incoming(rumqttc::Packet::Publish(p))) => {
-                        debug!(
-                            "[IOT]Received message - Topic: {}, Payload: {:?}",
-                            p.topic,
-                            String::from_utf8_lossy(&p.payload)
-                        );
-                    }
-                    Ok(_) => {}
-                    Err(e) => {
-                        error!("Broker connection error: {:?}", e);
-                        sleep(Duration::from_secs(1)).await;
-                    }
-                }
-            }
-        });
+        let running = self.running.clone();
 
-        // Wait for connection
-        for attempt in 1..=30 {
-            match client.try_publish("luffy/connected", QoS::AtLeastOnce, false, "true") {
-                Ok(_) => {
-                    debug!(
-                        "Successfully connected to broker after {} attempts",
-                        attempt
-                    );
-                    self.client = Some(client.clone());
-                    let running = self.running.clone();
-                    return Ok(tokio::spawn(async move {
-                        Self::telemetry_loop(client, running).await;
-                    }));
-                }
-                Err(_) => {
-                    debug!("Broker not ready, attempt {}/30", attempt);
-                    sleep(Duration::from_secs(1)).await;
-                }
-            }
-        }
+        // Start telemetry loop
 
-        connection_handle.abort();
-        Err(anyhow::anyhow!(
-            "Failed to connect to broker after 30 attempts"
-        ))
+        Ok(tokio::spawn(async move {
+            Self::telemetry_loop(mqtt_client, running).await;
+        }))
     }
 
-    async fn telemetry_loop(client: AsyncClient, running: Arc<AtomicBool>) {
+    async fn telemetry_loop(mqtt_client: MqttClient, running: Arc<AtomicBool>) {
         let vehicle = Vehicle::instance().await;
         let local_interval = CONFIG.iot.local_interval;
         let mut interval = tokio::time::interval(Duration::from_secs(local_interval));
+
         while running.load(Ordering::SeqCst) {
             interval.tick().await;
 
             let state = match vehicle.get_state_snapshot() {
                 Ok(state) => state,
                 Err(e) => {
-                    error!("Broker - Failed to get state snapshot: {}", e);
+                    error!("Failed to get state snapshot: {}", e);
                     return;
                 }
             };
@@ -111,35 +69,23 @@ impl LocalIotClient {
             let payload = match serde_json::to_string(&state) {
                 Ok(payload) => payload,
                 Err(e) => {
-                    error!("Broker - Failed to serialize state: {}", e);
+                    error!("Failed to serialize state: {}", e);
                     return;
                 }
             };
 
             let topic = format!("{}/telemetry", vehicle.vehicle_id);
-            debug!("Broker - Publishing telemetry: {}", payload);
+            debug!("Publishing telemetry: {}", payload);
 
-            match client
-                .publish(&topic, QoS::AtLeastOnce, false, payload)
-                .await
-            {
-                Ok(_) => debug!("Broker - Successfully published telemetry"),
-                Err(e) => error!("Broker - Failed to publish telemetry: {}", e),
+            if let Err(e) = mqtt_client.publish(&topic, &payload).await {
+                error!("Failed to publish telemetry: {}", e);
+            } else {
+                debug!("Successfully published telemetry");
             }
         }
     }
 
     pub async fn stop(&self) {
         self.running.store(false, Ordering::SeqCst);
-
-        if let Some(client) = &self.client {
-            if let Err(e) = client
-                .disconnect()
-                .await
-                .context("Failed to disconnect from broker")
-            {
-                error!("Failed to disconnect from broker: {}", e);
-            }
-        }
     }
 }

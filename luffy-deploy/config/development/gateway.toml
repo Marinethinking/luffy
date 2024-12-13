@@ -22,10 +22,7 @@ register = "arn:aws:lambda:ca-central-1:583818069008:function:amplify-d34e88yymc
 local_interval = 1 # seconds
 remote_interval = 4 # seconds
 
-[broker]
-host = "127.0.0.1"
-port = 9183  # needs to be same with rumqttd.toml
 
 [mavlink]
-connection_string = "udpin:192.168.20.183:14559"  
+connection_string = "udpin:192.168.20.167:14559"  
 

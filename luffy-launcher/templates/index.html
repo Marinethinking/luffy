@@ -50,90 +50,66 @@
                 </div>
             </div>
 
-            <!-- Server Status Card -->
+            <!-- Services Status Card -->
             <div class="status-card">
-                <h2>Server Status</h2>
-                <div class="connection-status">
-                    <p>Server:
-                        <span class="status-indicator connected">
-                            {{ status.server_status }}
+                <h2>Services Status</h2>
+                <div class="services-status">
+                    {% for service in status.services %}
+                    <div class="service-item">
+                        <label>{{ service.name }}:</label>
+                        <span class="status-indicator {% if service.status == "Running" %}connected{% else %}disconnected{% endif %}">
+                            {{ service.status }}
                         </span>
-                    </p>
-                    <p>MAVLink:
-                        <span
-                            class="status-indicator {% if status.mavlink_connected %}connected{% else %}disconnected{% endif %}">
-                            {% if status.mavlink_connected %}Connected{% else %}Disconnected{% endif %}
-                        </span>
-                    </p>
-                    <p>IoT:
-                        <span
-                            class="status-indicator {% if status.iot_connected %}connected{% else %}disconnected{% endif %}">
-                            {% if status.iot_connected %}Connected{% else %}Disconnected{% endif %}
-                        </span>
-                    </p>
-                    <p>Broker:
-                        <span
-                            class="status-indicator {% if status.broker_connected %}connected{% else %}disconnected{% endif %}">
-                            {% if status.broker_connected %}Connected{% else %}Disconnected{% endif %}
-                        </span>
-                    </p>
+                        <span class="health-time">(Last health: {{ service.last_health_report }}s ago)</span>
+                    </div>
+                    {% endfor %}
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        // Auto-refresh status every 5 seconds
+        // Auto-refresh status every second
         setInterval(async () => {
-            console.log("fetching status");
-            const response = await fetch('/api/status');
-            let statusData = await response.json();
-            console.log("statusData", statusData);
-            updateUI(statusData);
+            try {
+                const response = await fetch('/api/status');
+                const statusData = await response.json();
+                updateUI(statusData);
+            } catch (error) {
+                console.error('Error fetching status:', error);
+            }
         }, 1000);
 
         function updateUI(data) {
             try {
-                // Update location, yaw, and battery
+                // Update version and vehicle ID
+                document.querySelector('.version-info span:first-child').textContent = `Version: ${data.version}`;
+                document.querySelector('.vehicle-id').textContent = `Vehicle ID: ${data.vehicle_id}`;
+
+                // Update vehicle status
                 document.querySelector('.status-item:nth-of-type(1) span').textContent = data.location;
                 document.querySelector('.status-item:nth-of-type(2) span').textContent = `${data.yaw}°`;
                 document.querySelector('.status-item:nth-of-type(3) span').textContent = `${data.battery}%`;
 
-                // Update armed status
                 const armedIndicator = document.querySelector('.status-item:nth-of-type(4) .status-indicator');
                 armedIndicator.className = `status-indicator ${data.armed ? 'connected' : 'disconnected'}`;
                 armedIndicator.textContent = data.armed ? 'Armed' : 'Disarmed';
 
-                // Update flight mode
                 document.querySelector('.mode-indicator').textContent = data.flight_mode;
 
-                // Update server status
-                const serverStatus = document.querySelector('.connection-status p:nth-of-type(1) .status-indicator');
-                serverStatus.textContent = data.server_status;
-
-                // Update other connection statuses
-                const mavlinkStatus = document.querySelector('.connection-status p:nth-of-type(2) .status-indicator');
-                const iotStatus = document.querySelector('.connection-status p:nth-of-type(3) .status-indicator');
-                const brokerStatus = document.querySelector('.connection-status p:nth-of-type(4) .status-indicator');
-
-                if (mavlinkStatus) {
-                    mavlinkStatus.className = `status-indicator ${data.mavlink_connected ? 'connected' : 'disconnected'}`;
-                    mavlinkStatus.textContent = data.mavlink_connected ? 'Connected' : 'Disconnected';
+                // Update services
+                const servicesContainer = document.querySelector('.services-status');
+                if (servicesContainer && data.services) {
+                    servicesContainer.innerHTML = data.services.map(service => `
+                        <div class="service-item">
+                            <label>${service.name}:</label>
+                            <span class="status-indicator ${service.status === 'Running' ? 'connected' : 'disconnected'}">
+                                ${service.status}
+                            </span>
+                            <span class="health-time">(Last health: ${service.last_health_report}s ago)</span>
+                        </div>
+                    `).join('');
                 }
-                if (iotStatus) {
-                    iotStatus.className = `status-indicator ${data.iot_connected ? 'connected' : 'disconnected'}`;
-                    iotStatus.textContent = data.iot_connected ? 'Connected' : 'Disconnected';
-                }
-                if (brokerStatus) {
-                    brokerStatus.className = `status-indicator ${data.broker_connected ? 'connected' : 'disconnected'}`;
-                    brokerStatus.textContent = data.broker_connected ? 'Connected' : 'Disconnected';
-                }
-
-                // Add version update
-                document.querySelector('.version-info span').textContent = `Version: ${data.version}`;
-
-                document.querySelector('.vehicle-id').textContent = `Vehicle ID: ${data.vehicle_id}`;
-                document.querySelector('.version-info span').textContent = `Version: ${data.version}`;
             } catch (error) {
                 console.error('Error updating UI:', error);
             }

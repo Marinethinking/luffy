@@ -87,11 +87,7 @@ async fn spawn_web_server(mut shutdown: broadcast::Receiver<()>) -> tokio::task:
 async fn spawn_monitor_server(
     mut shutdown: broadcast::Receiver<()>,
 ) -> tokio::task::JoinHandle<()> {
-    let mut monitor = MqttMonitor::new(
-        "launcher".to_string(),
-        CONFIG.base.mqtt_host.to_string(),
-        CONFIG.base.mqtt_port,
-    );
+    let monitor = MqttMonitor::instance().await;
     tokio::spawn(async move {
         tokio::select! {
             result = monitor.start() => {

@@ -1,31 +1,68 @@
-use std::time::Duration;
+use crate::monitor::service::ServiceStatus;
+use crate::monitor::vehicle::VehicleState;
+use crate::{config::CONFIG, monitor::service::Services};
+use anyhow::{anyhow, Result};
 
-use anyhow::Result;
 use luffy_common::mqtt::MqttClient;
 use luffy_common::util::glob_match;
+use serde::Deserialize;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::OnceCell;
+use tokio::sync::{Mutex, RwLock};
 use tracing::{debug, info};
 
+// Add static instance
+static MQTT_MONITOR: OnceCell<Arc<MqttMonitor>> = OnceCell::const_new();
+
+// Add this struct to deserialize telemetry data
+#[derive(Debug, Deserialize)]
+struct TelemetryData {
+    location: (f64, f64),
+    yaw_degree: f32,
+    battery_percentage: f32,
+    armed: bool,
+    flight_mode: String,
+}
+
 pub struct MqttMonitor {
-    client: MqttClient,
+    pub services: Arc<RwLock<Services>>,
+    pub vehicle: Arc<RwLock<VehicleState>>,
+    client: Arc<Mutex<MqttClient>>,
 }
 
 impl MqttMonitor {
-    pub fn new(name: String, host: String, port: u16) -> Self {
-        Self {
-            client: MqttClient::new(name, host, port, None),
-        }
+    pub async fn instance() -> Arc<Self> {
+        MQTT_MONITOR
+            .get_or_init(|| async {
+                Arc::new(Self {
+                    services: Arc::new(RwLock::new(Services::new())),
+                    vehicle: Arc::new(RwLock::new(VehicleState::default())),
+                    client: Arc::new(Mutex::new(MqttClient::new(
+                        "launcher".to_string(),
+                        CONFIG.base.mqtt_host.to_string(),
+                        CONFIG.base.mqtt_port,
+                        None,
+                    ))),
+                })
+            })
+            .await
+            .clone()
     }
 
-    pub async fn start(&mut self) -> Result<()> {
-        self.client.set_on_message(|topic, payload| {
-            Self::handle_message(topic, payload);
+    pub async fn start(&self) -> Result<()> {
+        info!("Starting MQTT monitor");
+
+        let mut client = self.client.lock().await;
+        client.set_on_message(|topic, payload| {
+            tokio::spawn(Self::handle_message(topic, payload));
         });
 
-        self.client.connect().await?;
+        client.connect().await?;
         let timeout = Duration::from_secs(30);
         let start = std::time::Instant::now();
         loop {
-            if self.client.connected {
+            if client.connected {
                 break;
             }
             if start.elapsed() > timeout {
@@ -35,18 +72,47 @@ impl MqttMonitor {
         }
         info!("MQTT connected");
 
-        self.client.subscribe("luffy/+/health").await?;
+        client.subscribe("luffy/+/health").await?;
+        client.subscribe("+/telemetry").await?;
         Ok(())
     }
 
-    fn handle_message(topic: String, payload: String) {
-        info!(
+    async fn handle_message(topic: String, payload: String) {
+        debug!(
             "Monitor received message: topic={}, payload={}",
             topic, payload
         );
-        let pattern = glob_match("luffy/+/health", &topic);
-        if pattern {
-            info!("Monitor received health message: {}", payload);
+        let instance = MQTT_MONITOR.get().unwrap();
+
+        if glob_match("luffy/+/health", &topic) {
+            let service_name = topic.split('/').nth(1).unwrap_or("unknown");
+            let mut services = instance.services.write().await;
+            services.set_service(service_name, ServiceStatus::Running);
+            debug!("Service {} is running", service_name);
+        } else if glob_match("+/telemetry", &topic) {
+            // Handle telemetry data
+            if let Ok(telemetry) = serde_json::from_str::<TelemetryData>(&payload) {
+                let mut vehicle = instance.vehicle.write().await;
+                vehicle.location = telemetry.location;
+                vehicle.yaw_degree = telemetry.yaw_degree;
+                vehicle.battery_percentage = telemetry.battery_percentage;
+                vehicle.armed = telemetry.armed;
+                vehicle.flight_mode = telemetry.flight_mode;
+                debug!("Updated vehicle state from telemetry");
+            } else {
+                debug!("Failed to parse telemetry data: {}", payload);
+            }
         }
+    }
+
+    pub async fn get_services_snapshot(&self) -> Result<Services> {
+        let services = self.services.read().await;
+        debug!("Services: {:?}", services);
+        Ok(services.clone())
+    }
+
+    pub async fn get_vehicle_snapshot(&self) -> Result<VehicleState> {
+        let vehicle = self.vehicle.read().await;
+        Ok(vehicle.clone())
     }
 }
