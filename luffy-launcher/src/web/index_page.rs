@@ -7,6 +7,7 @@ use axum::{
 use serde::Serialize;
 use std::env;
 use std::sync::Arc;
+use std::time::{SystemTime, Duration};
 
 use crate::{
     config::CONFIG,
@@ -37,6 +38,7 @@ pub struct ServiceStatusViewModel {
     pub name: String,
     pub status: String,
     pub last_health_report: String,
+    pub version: String,
 }
 
 // Template
@@ -87,24 +89,45 @@ impl StatusViewModel {
         let monitor = MqttMonitor::instance().await.clone();
         let services = monitor.get_services_snapshot().await.unwrap_or_default();
 
-        services
-            .services
-            .iter()
-            .map(|(name, state)| ServiceStatusViewModel {
-                name: name.clone(),
-                status: match state.status {
+        let service_names = ["gateway", "launcher", "media"];
+        
+        service_names.iter().map(|&name| {
+            let state = services.services.get(name);
+            let (status, last_report, version) = if let Some(state) = state {
+                let elapsed = SystemTime::now()
+                    .duration_since(state.last_health_report)
+                    .unwrap_or(Duration::from_secs(0));
+                
+                let status = if elapsed.as_secs() > 60 {
+                    ServiceStatus::Unknown
+                } else {
+                    state.status.clone()
+                };
+
+                let time_str = if elapsed.as_secs() < 60 {
+                    format!("{}s", elapsed.as_secs())
+                } else if elapsed.as_secs() < 3600 {
+                    format!("{}m", elapsed.as_secs() / 60)
+                } else {
+                    format!("{}h", elapsed.as_secs() / 3600)
+                };
+
+                (status, time_str, state.version.clone())
+            } else {
+                (ServiceStatus::Unknown, "Never".to_string(), "Unknown".to_string())
+            };
+
+            ServiceStatusViewModel {
+                name: name.to_string(),
+                status: match status {
                     ServiceStatus::Running => "Running".to_string(),
                     ServiceStatus::Stopped => "Stopped".to_string(),
                     ServiceStatus::Unknown => "Unknown".to_string(),
                 },
-                last_health_report: state
-                    .last_health_report
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs()
-                    .to_string(),
-            })
-            .collect()
+                last_health_report: last_report,
+                version,
+            }
+        }).collect()
     }
 }
 

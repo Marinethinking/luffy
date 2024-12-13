@@ -28,7 +28,9 @@ impl LocalIotClient {
                 "gateway".to_string(),
                 CONFIG.base.mqtt_host.to_string(),
                 CONFIG.base.mqtt_port,
-                None, // No message handler needed for local client
+                Some(Self::on_message),
+                CONFIG.base.health_report_interval,
+                env!("CARGO_PKG_VERSION").to_string(),
             ))),
             running: Arc::new(AtomicBool::new(true)),
         }
@@ -43,7 +45,10 @@ impl LocalIotClient {
 
         let running = self.running.clone();
 
-        // Start telemetry loop
+        let vehicle = Vehicle::instance().await;
+        mqtt_client
+            .subscribe(&format!("{}/command/#", vehicle.vehicle_id))
+            .await?;
 
         Ok(tokio::spawn(async move {
             Self::telemetry_loop(mqtt_client, running).await;
@@ -87,5 +92,12 @@ impl LocalIotClient {
 
     pub async fn stop(&self) {
         self.running.store(false, Ordering::SeqCst);
+    }
+
+    fn on_message(topic: String, payload: String) {
+        debug!(
+            "Local IoT client received message: topic={}, payload={}",
+            topic, payload
+        );
     }
 }

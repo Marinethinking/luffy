@@ -8,6 +8,7 @@ pub struct BaseConfig {
     pub vehicle_id: String,
     pub mqtt_host: String,
     pub mqtt_port: u16,
+    pub health_report_interval: u64,
 }
 
 pub trait LoadConfig {

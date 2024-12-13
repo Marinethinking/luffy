@@ -1,4 +1,4 @@
-use crate::monitor::service::ServiceStatus;
+use crate::monitor::service::{HealthReport, ServiceStatus};
 use crate::monitor::vehicle::VehicleState;
 use crate::{config::CONFIG, monitor::service::Services};
 use anyhow::{anyhow, Result};
@@ -35,6 +35,8 @@ impl MqttMonitor {
     pub async fn instance() -> Arc<Self> {
         MQTT_MONITOR
             .get_or_init(|| async {
+                let version = env!("CARGO_PKG_VERSION");
+
                 Arc::new(Self {
                     services: Arc::new(RwLock::new(Services::new())),
                     vehicle: Arc::new(RwLock::new(VehicleState::default())),
@@ -43,6 +45,8 @@ impl MqttMonitor {
                         CONFIG.base.mqtt_host.to_string(),
                         CONFIG.base.mqtt_port,
                         None,
+                        CONFIG.base.health_report_interval,
+                        version.to_string(),
                     ))),
                 })
             })
@@ -86,9 +90,18 @@ impl MqttMonitor {
 
         if glob_match("luffy/+/health", &topic) {
             let service_name = topic.split('/').nth(1).unwrap_or("unknown");
-            let mut services = instance.services.write().await;
-            services.set_service(service_name, ServiceStatus::Running);
-            debug!("Service {} is running", service_name);
+
+            if let Ok(health) = serde_json::from_str::<HealthReport>(&payload) {
+                let mut services = instance.services.write().await;
+                let version = health.version.clone();
+                services.set_service(service_name, ServiceStatus::Running, version);
+                debug!(
+                    "Service {} is running with version {}",
+                    service_name, health.version
+                );
+            } else {
+                debug!("Failed to parse health report: {}", payload);
+            }
         } else if glob_match("+/telemetry", &topic) {
             // Handle telemetry data
             if let Ok(telemetry) = serde_json::from_str::<TelemetryData>(&payload) {

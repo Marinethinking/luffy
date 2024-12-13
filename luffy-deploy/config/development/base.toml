@@ -1,3 +1,4 @@
 vehicle_id = "luffy-dev"
 mqtt_host = "192.168.20.167"
 mqtt_port = 9183
+health_report_interval = 60

@@ -60,7 +60,8 @@
                         <span class="status-indicator {% if service.status == "Running" %}connected{% else %}disconnected{% endif %}">
                             {{ service.status }}
                         </span>
-                        <span class="health-time">(Last health: {{ service.last_health_report }}s ago)</span>
+                        <span class="version-tag">v{{ service.version }}</span>
+                        <span class="health-time">(Last health: {{ service.last_health_report }} ago)</span>
                     </div>
                     {% endfor %}
                 </div>
@@ -106,7 +107,8 @@
                             <span class="status-indicator ${service.status === 'Running' ? 'connected' : 'disconnected'}">
                                 ${service.status}
                             </span>
-                            <span class="health-time">(Last health: ${service.last_health_report}s ago)</span>
+                            <span class="version-tag">v${service.version}</span>
+                            <span class="health-time">(Last report: ${service.last_health_report} ago)</span>
                         </div>
                     `).join('');
                 }

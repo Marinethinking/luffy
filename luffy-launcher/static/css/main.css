@@ -78,3 +78,32 @@
 .vehicle-id {
     font-weight: bold;
 }
+
+.services-status {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.service-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.service-item label {
+    min-width: 80px;
+}
+
+.health-time {
+    color: #666;
+    margin-left: 4px;
+}
+
+.version-tag {
+    background-color: #e0e0e0;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.8em;
+    color: #666;
+}

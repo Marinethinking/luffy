@@ -1,5 +1,7 @@
 use anyhow::Result;
 use rumqttc::{AsyncClient, Event, Packet, QoS};
+use serde_json::json;
+use serde_json::Value as JsonValue;
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
 use tracing::{debug, error, info};
@@ -13,6 +15,7 @@ pub struct MqttClient {
     pub connected: bool,
     client: Option<AsyncClient>,
     health_report_interval: u64,
+    version: String,
 }
 
 impl Default for MqttClient {
@@ -25,6 +28,7 @@ impl Default for MqttClient {
             connected: false,
             client: None,
             health_report_interval: 60,
+            version: env!("CARGO_PKG_VERSION").to_string(),
         }
     }
 }
@@ -35,6 +39,8 @@ impl MqttClient {
         host: String,
         port: u16,
         on_message: Option<fn(topic: String, payload: String)>,
+        health_report_interval: u64,
+        version: String,
     ) -> Self {
         Self {
             name,
@@ -43,7 +49,8 @@ impl MqttClient {
             on_message,
             connected: false,
             client: None,
-            health_report_interval: 60,
+            health_report_interval,
+            version,
         }
     }
 
@@ -145,11 +152,17 @@ impl MqttClient {
                     let client = self.client.clone();
                     let name = self.name.clone();
                     let interval = self.health_report_interval;
-
+                    let health_report_payload = json!({
+                        "version": self.version
+                    })
+                    .to_string();
                     // Spawn health report task
                     tokio::spawn(async move {
                         info!("🏥 Starting health report task for {}", name);
-                        if let Err(e) = Self::health_report_task(client, name, interval).await {
+                        if let Err(e) =
+                            Self::health_report_task(client, name, interval, health_report_payload)
+                                .await
+                        {
                             error!("❌ Health report task failed: {:?}", e);
                         }
                     });
@@ -175,6 +188,7 @@ impl MqttClient {
         client: Option<AsyncClient>,
         name: String,
         interval: u64,
+        health_report_payload: String,
     ) -> Result<()> {
         info!("🏥 Health report task started for {}", name);
         let mut interval = tokio::time::interval(Duration::from_secs(interval));
@@ -187,7 +201,7 @@ impl MqttClient {
                         &format!("luffy/{}/health", name),
                         QoS::AtLeastOnce,
                         false,
-                        "true",
+                        health_report_payload.clone(),
                     )
                     .await
                 {

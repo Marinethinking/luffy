@@ -8,11 +8,13 @@ edition.workspace = true
 config.workspace = true
 tokio.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 rumqttc.workspace = true
 tracing-subscriber.workspace = true
 glob.workspace = true
+ 
 
 network-interface = "2.0"
 uuid = { version = "1.11", features = ["v4"] }

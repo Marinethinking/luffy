@@ -2260,6 +2260,7 @@ dependencies = [
  "network-interface",
  "rumqttc",
  "serde",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-appender",
