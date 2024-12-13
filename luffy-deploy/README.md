@@ -13,6 +13,8 @@ sudo sh ./scripts/build-deb.sh luffy-gateway
 ## Install deb package
 
 ```bash
+wget https://github.com/MarineThinking/luffy/releases/download/v0.4.1/luffy-gateway_0.4.1-1_amd64.deb
+wget https://github.com/Marinethinking/luffy/releases/download/v0.4.1/luffy-launcher_0.4.1-1_arm64.deb
 sudo dpkg -i dist/*.deb
 ```
 

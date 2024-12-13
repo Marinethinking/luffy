@@ -52,11 +52,10 @@ priority = "optional"
 assets = [
     ["target/release/luffy-gateway", "usr/bin/", "755"],
     ["../luffy-deploy/config/development/gateway.toml", "etc/luffy/", "644"],
-    ["../luffy-deploy/config/development/base.toml", "etc/luffy/", "644"],
+    ["../luffy-deploy/config/development/base.toml",  "usr/share/luffy-gateway/base.toml", "644"],
     ["../luffy-deploy/scripts/luffy-gateway.service", "lib/systemd/system/", "644"],
 ]
 conf-files = [
-    "/etc/luffy/base.toml",
     "/etc/luffy/gateway.toml"
 ]
 systemd-units = { unit-name = "luffy-gateway", enable = true, start = true }

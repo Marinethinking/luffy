@@ -45,11 +45,11 @@ priority = "optional"
 assets = [
     ["target/release/luffy-launcher", "usr/bin/", "755"],
     ["../luffy-deploy/config/development/launcher.toml", "etc/luffy/", "644"],
-    ["../luffy-deploy/config/development/base.toml", "etc/luffy/", "644"],
+    ["../luffy-deploy/config/development/base.toml", "usr/share/luffy-launcher/base.toml", "644"],
     ["../luffy-deploy/scripts/luffy-launcher.service", "lib/systemd/system/", "644"],
+    ["static/**/*", "usr/share/luffy-launcher/static/", "644"],
 ]
 conf-files = [
-    "/etc/luffy/base.toml",
     "/etc/luffy/launcher.toml"
 ]
 systemd-units = { unit-name = "luffy-launcher", enable = true, start = true }

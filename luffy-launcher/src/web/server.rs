@@ -32,10 +32,21 @@ impl WebServer {
                 .join("luffy-launcher")
                 .join("static")
         } else {
-            std::env::current_exe()?
-                .parent()
-                .context("Failed to get executable directory")?
-                .join("static")
+            // For production Debian package installation
+            let possible_paths = [
+                "/usr/share/luffy-launcher/static".into(), // Primary Debian path
+                "/usr/local/share/luffy-launcher/static".into(), // Local installation
+                std::env::current_exe()? // Fallback to executable directory
+                    .parent()
+                    .context("Failed to get executable directory")?
+                    .join("static"),
+            ];
+
+            // Use the first path that exists
+            possible_paths
+                .into_iter()
+                .find(|path| path.exists())
+                .context("Could not find static files directory")?
         };
 
         let app = Router::new()

@@ -16,6 +16,12 @@ if [ ! -d "/etc/luffy" ]; then
     mkdir -p /etc/luffy
 fi
 
+# Install base.toml only if it doesn't exist
+if [ ! -f "/etc/luffy/base.toml" ]; then
+    echo "Installing base.toml..."
+    cp /usr/share/luffy-gateway/base.toml /etc/luffy/base.toml
+fi
+
 # Set permissions only if directory exists
 if [ -d "/etc/luffy" ]; then
     chown -R luffy:luffy /etc/luffy
