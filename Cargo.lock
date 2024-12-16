@@ -2256,7 +2256,7 @@ dependencies = [
 
 [[package]]
 name = "luffy-common"
-version = "0.4.2"
+version = "0.4.4"
 dependencies = [
  "anyhow",
  "config 0.14.1",
@@ -2277,7 +2277,7 @@ dependencies = [
 
 [[package]]
 name = "luffy-gateway"
-version = "0.4.2"
+version = "0.4.4"
 dependencies = [
  "anyhow",
  "askama",
@@ -2313,7 +2313,7 @@ dependencies = [
 
 [[package]]
 name = "luffy-launcher"
-version = "0.4.2"
+version = "0.4.4"
 dependencies = [
  "anyhow",
  "askama",
@@ -2342,7 +2342,7 @@ dependencies = [
 
 [[package]]
 name = "luffy-media"
-version = "0.4.2"
+version = "0.4.4"
 
 [[package]]
 name = "mach2"
