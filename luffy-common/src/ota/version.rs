@@ -85,7 +85,7 @@ impl BaseVersionManager {
             .filter(|asset| asset.name.ends_with(".deb"))
             .map(|asset| (asset.name.clone(), asset.browser_download_url.clone()))
             .collect();
-        info!("Latest version: {}", release.tag_name);
+        info!("Latest version: {}, {:?}", release.tag_name, deb_assets);
         Ok((release.tag_name, deb_assets))
     }
 

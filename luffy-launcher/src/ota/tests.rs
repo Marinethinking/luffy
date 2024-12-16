@@ -49,4 +49,12 @@ mod ota_tests {
 
         Ok(())
     }
+
+    #[tokio::test]
+    async fn test_check_updates() -> Result<()> {
+        init();
+        let version_manager = VersionManager::new();
+        version_manager.check_updates().await?;
+        Ok(())
+    }
 }

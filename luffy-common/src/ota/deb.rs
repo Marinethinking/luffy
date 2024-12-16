@@ -130,8 +130,10 @@ impl DebManager {
             // Mark as installed and cleanup other files
             self.mark_as_installed(deb_path).await?;
             self.cleanup_package_files(package_name).await?;
+            info!("Installed package {:?}", deb_path);
             Ok(true)
         } else {
+            info!("Failed to install package {:?}", deb_path);
             Ok(false)
         }
     }
@@ -169,6 +171,7 @@ impl DebManager {
         if !status.success() {
             return Err(anyhow!("Failed to rollback package"));
         }
+        info!("Rolled back {} to version {}", package_name, version);
         Ok(())
     }
 
@@ -186,6 +189,7 @@ impl DebManager {
         {
             warn!("Service control is only supported on Linux systems");
         }
+        info!("Stopped service {:?}", service_type);
         Ok(())
     }
 
@@ -203,6 +207,7 @@ impl DebManager {
         {
             warn!("Service control is only supported on Linux systems");
         }
+        info!("Started service {:?}", service_type);
         Ok(())
     }
 
@@ -309,6 +314,7 @@ impl DebManager {
                 Version::parse(&current_version),
                 Version::parse(new_version),
             ) {
+                info!("Current version: {}, new version: {}", current, new);
                 return Ok(new > current);
             }
         }
