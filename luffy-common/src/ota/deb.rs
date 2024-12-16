@@ -4,12 +4,16 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Command;
 use tokio::fs;
+
 use tracing::{info, warn};
+
+use semver::Version;
 
 #[derive(Debug, Hash, Eq, PartialEq)]
 pub enum ServiceType {
     Gateway,
     Media,
+    Launcher,
     Other(String),
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -206,6 +210,7 @@ impl DebManager {
         match service_type {
             ServiceType::Gateway => "luffy-gateway".to_string(),
             ServiceType::Media => "luffy-media".to_string(),
+            ServiceType::Launcher => "luffy-launcher".to_string(),
             ServiceType::Other(name) => name.clone(),
         }
     }
@@ -255,15 +260,58 @@ impl DebManager {
         Ok(())
     }
 
-    pub fn is_package_installed(&self, package_name: &str) -> bool {
-        let output = std::process::Command::new("dpkg")
-            .arg("-l")
-            .arg(package_name)
-            .output();
-
-        match output {
-            Ok(output) => output.status.success(),
-            Err(_) => false,
+    pub fn is_package_installed(&self, package_name: &str) -> Result<bool> {
+        match Command::new("dpkg").arg("-l").arg(package_name).output() {
+            Ok(output) => Ok(output.status.success()),
+            Err(e) => {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    warn!("dpkg command not found. System might not be Debian-based");
+                    Ok(false)
+                } else {
+                    Err(anyhow!("Failed to check package installation: {}", e))
+                }
+            }
         }
+    }
+
+    pub fn extract_package_version(&self, filename: &str) -> Option<String> {
+        // Format: package-name_version_arch.deb
+        filename.split('_').nth(1).map(|s| s.to_string())
+    }
+
+    pub fn get_package_version(&self, package_name: &str) -> Result<String> {
+        match Command::new("dpkg-query")
+            .args(["-W", "-f=${Version}", package_name])
+            .output()
+        {
+            Ok(output) => {
+                if output.status.success() {
+                    Ok(String::from_utf8(output.stdout)?.trim().to_string())
+                } else {
+                    Err(anyhow!("Package {} not found", package_name))
+                }
+            }
+            Err(e) => {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    Err(anyhow!(
+                        "dpkg-query command not found. System might not be Debian-based"
+                    ))
+                } else {
+                    Err(anyhow!("Failed to get package version: {}", e))
+                }
+            }
+        }
+    }
+
+    pub fn needs_update(&self, package_name: &str, new_version: &str) -> Result<bool> {
+        if let Ok(current_version) = self.get_package_version(package_name) {
+            if let (Ok(current), Ok(new)) = (
+                Version::parse(&current_version),
+                Version::parse(new_version),
+            ) {
+                return Ok(new > current);
+            }
+        }
+        Ok(false)
     }
 }

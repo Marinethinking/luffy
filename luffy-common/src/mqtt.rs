@@ -1,7 +1,11 @@
+use std::cmp::min;
+use std::sync::Arc;
+
 use anyhow::Result;
 use rumqttc::{AsyncClient, Event, Packet, QoS};
 use serde_json::json;
 use serde_json::Value as JsonValue;
+use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
 use tracing::{debug, error, info};
@@ -16,6 +20,7 @@ pub struct MqttClient {
     client: Option<AsyncClient>,
     health_report_interval: u64,
     version: String,
+    subscriptions: Arc<Mutex<Vec<String>>>,
 }
 
 impl Default for MqttClient {
@@ -29,6 +34,7 @@ impl Default for MqttClient {
             client: None,
             health_report_interval: 60,
             version: env!("CARGO_PKG_VERSION").to_string(),
+            subscriptions: Arc::new(Mutex::new(Vec::new())),
         }
     }
 }
@@ -51,6 +57,7 @@ impl MqttClient {
             client: None,
             health_report_interval,
             version,
+            subscriptions: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -63,11 +70,17 @@ impl MqttClient {
         Ok(())
     }
 
-    pub async fn subscribe(&self, topic: &str) -> Result<()> {
+    pub async fn subscribe(&mut self, topic: &str) -> Result<()> {
         info!("📥 Attempting to subscribe to topic: {}", topic);
         if let Some(client) = &self.client {
             match client.subscribe(topic, QoS::AtLeastOnce).await {
-                Ok(_) => info!("✅ Successfully subscribed to {}", topic),
+                Ok(_) => {
+                    info!("✅ Successfully subscribed to {}", topic);
+                    let mut subs = self.subscriptions.lock().await;
+                    if !subs.contains(&topic.to_string()) {
+                        subs.push(topic.to_string());
+                    }
+                }
                 Err(e) => error!("❌ Failed to subscribe to {}: {:?}", topic, e),
             }
         } else {
@@ -91,11 +104,13 @@ impl MqttClient {
 
         let on_message = self.on_message;
         let name = self.name.clone();
-
+        let subscriptions = self.subscriptions.clone();
         // Spawn the connection handling task
         let connection_handle = tokio::spawn(async move {
             info!("🚀 Starting broker connection event loop for {}", name);
             let mut connection_established = false;
+            let mut retry_interval = Duration::from_secs(1);
+            let max_interval = Duration::from_secs(60);
 
             loop {
                 match eventloop.poll().await {
@@ -104,7 +119,17 @@ impl MqttClient {
                     }
                     Ok(Event::Incoming(Packet::ConnAck(ack))) => {
                         connection_established = true;
+                        retry_interval = Duration::from_secs(1);
                         info!("🔗 Connected to broker: {:?}", ack);
+                        let subs = subscriptions.lock().await;
+                        info!("Resubscribing to {} topics", subs.len());
+                        for topic in subs.iter() {
+                            if let Err(e) = client.subscribe(topic, QoS::AtLeastOnce).await {
+                                error!("❌ Failed to resubscribe to {}: {:?}", topic, e);
+                            } else {
+                                info!("✅ Resubscribed to {}", topic);
+                            }
+                        }
                     }
                     Ok(Event::Incoming(Packet::Publish(p))) => {
                         debug!(
@@ -122,12 +147,14 @@ impl MqttClient {
                         debug!("📝 Other MQTT event received: {:?}", event);
                     }
                     Err(e) => {
-                        error!("❌ Broker connection error: {:?}", e);
+                        error!("❌ Connection error: {:?}", e);
                         if connection_established {
                             error!("📡 Connection lost, attempting to reconnect...");
                             connection_established = false;
                         }
-                        sleep(Duration::from_secs(1)).await;
+
+                        sleep(retry_interval).await;
+                        retry_interval = min(retry_interval * 2, max_interval);
                     }
                 }
             }
@@ -137,7 +164,7 @@ impl MqttClient {
         info!("Attempting to establish initial connection...");
         for attempt in 1..=30 {
             info!("Connection attempt {}/30", attempt);
-            match client.try_publish(
+            match self.client.as_ref().unwrap().try_publish(
                 format!("/luffy/{}/connected", self.name),
                 QoS::AtLeastOnce,
                 false,

@@ -62,6 +62,14 @@
                         </span>
                         <span class="version-tag">v{{ service.version }}</span>
                         <span class="health-time">(Last health: {{ service.last_health_report }} ago)</span>
+                        {% if service.update_available %}
+                        <button 
+                            class="update-button" 
+                            data-service="{{ service.name }}"
+                            data-version="{{ service.available_version }}">
+                            Update to v{{ service.available_version }}
+                        </button>
+                        {% endif %}
                     </div>
                     {% endfor %}
                 </div>
@@ -116,6 +124,43 @@
                 console.error('Error updating UI:', error);
             }
         }
+
+        document.addEventListener('click', async (e) => {
+            if (e.target.classList.contains('update-button')) {
+                const service = e.target.dataset.service;
+                const version = e.target.dataset.version;
+                const button = e.target;
+                
+                try {
+                    button.disabled = true;
+                    button.textContent = 'Updating...';
+                    
+                    const response = await fetch('/api/update', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            service,
+                            version
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error('Update failed');
+                    }
+                    
+                    button.textContent = 'Update Complete!';
+                    setTimeout(() => {
+                        button.remove();
+                    }, 2000);
+                } catch (error) {
+                    console.error('Update failed:', error);
+                    button.textContent = 'Update Failed';
+                    button.disabled = false;
+                }
+            }
+        });
     </script>
 </body>
 

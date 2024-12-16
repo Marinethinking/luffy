@@ -1,3 +1,5 @@
+mod ota;
+
 use anyhow::Result;
 
 use luffy_gateway::broker::MqttBroker;
@@ -8,6 +10,8 @@ use luffy_gateway::mav_server::MavlinkServer;
 use tokio::signal;
 use tokio::sync::broadcast;
 use tracing::{error, info};
+
+use crate::ota::version::VersionManager;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -42,6 +46,13 @@ async fn main() -> Result<()> {
         tokio::spawn(async {})
     };
 
+    let ota_handle = if CONFIG.ota.enable {
+        spawn_ota_server(shutdown_tx.subscribe()).await
+    } else {
+        info!("OTA server disabled in config, skipping...");
+        tokio::spawn(async {})
+    };
+
     let shutdown_signal = async {
         match signal::ctrl_c().await {
             Ok(()) => {
@@ -56,15 +67,18 @@ async fn main() -> Result<()> {
         }
     };
 
-    let results = tokio::join!(mav_handle, iot_handle, broker_handle, shutdown_signal);
+    let results = tokio::join!(
+        mav_handle,
+        iot_handle,
+        broker_handle,
+        ota_handle,
+        shutdown_signal
+    );
 
-    for (result, name) in [results.0, results.1, results.2].into_iter().zip([
-        "MAVLink server",
-        "IoT server",
-        "Web server",
-        "MQTT broker",
-        "OTA server",
-    ]) {
+    for (result, name) in [results.0, results.1, results.2, results.3]
+        .into_iter()
+        .zip(["MAVLink server", "IoT server", "MQTT broker", "OTA server"])
+    {
         if let Err(e) = result {
             error!("{} join error: {}", name, e);
         }
@@ -125,6 +139,24 @@ async fn spawn_iot_server(mut shutdown: broadcast::Receiver<()>) -> tokio::task:
             _ = shutdown.recv() => {
                 info!("Shutting down IoT server...");
                 server.stop().await;
+            }
+        }
+    })
+}
+
+async fn spawn_ota_server(mut shutdown: broadcast::Receiver<()>) -> tokio::task::JoinHandle<()> {
+    info!("Starting OTA server...");
+    let version_manager = VersionManager::new();
+    tokio::spawn(async move {
+        tokio::select! {
+            result = version_manager.start() => {
+                if let Err(e) = result {
+                    error!("Version manager error: {}", e);
+                }
+            }
+            _ = shutdown.recv() => {
+                info!("Shutting down OTA server...");
+                version_manager.stop();
             }
         }
     })

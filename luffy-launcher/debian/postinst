@@ -28,13 +28,25 @@ if [ -d "/etc/luffy" ]; then
     chmod 644 /etc/luffy/*.toml
 fi
 
+# Create /var/log/luffy if it doesn't exist
+if [ ! -d "/var/log/luffy" ]; then
+    echo "Creating /var/log/luffy directory..."
+    mkdir -p /var/log/luffy
+    chown luffy:luffy /var/log/luffy
+    chmod 755 /var/log/luffy
+fi
+
 # Configure sudo permissions if not already configured
 if [ ! -f "/etc/sudoers.d/luffy" ]; then
     echo "Configuring sudo permissions for luffy user..."
     cat > /etc/sudoers.d/luffy << EOF
-luffy ALL=(ALL) NOPASSWD: /bin/systemctl start luffy-*.service
-luffy ALL=(ALL) NOPASSWD: /bin/systemctl stop luffy-*.service
-luffy ALL=(ALL) NOPASSWD: /bin/systemctl restart luffy-*.service
+luffy ALL=(ALL) NOPASSWD: /usr/bin/systemctl start luffy-gateway
+luffy ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop luffy-gateway
+luffy ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart luffy-gateway
+luffy ALL=(ALL) NOPASSWD: /usr/bin/systemctl start luffy-media
+luffy ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop luffy-media
+luffy ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart luffy-media
+luffy ALL=(ALL) NOPASSWD: /usr/bin/dpkg -i /home/luffy/.deb/*
 EOF
     chmod 440 /etc/sudoers.d/luffy
 fi

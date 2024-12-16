@@ -28,6 +28,14 @@ if [ -d "/etc/luffy" ]; then
     chmod 644 /etc/luffy/*.toml
 fi
 
+# Create /var/log/luffy if it doesn't exist
+if [ ! -d "/var/log/luffy" ]; then
+    echo "Creating /var/log/luffy directory..."
+    mkdir -p /var/log/luffy
+    chown luffy:luffy /var/log/luffy
+    chmod 755 /var/log/luffy
+fi
+
 # Configure sudo permissions if not already configured
 if [ ! -f "/etc/sudoers.d/luffy" ]; then
     echo "Configuring sudo permissions for luffy user..."

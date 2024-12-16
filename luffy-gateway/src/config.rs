@@ -15,6 +15,7 @@ pub struct GatewayConfig {
     pub aws: AwsConfig,
     pub mavlink: MavlinkConfig,
     pub iot: IotConfig,
+    pub ota: OtaConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -61,4 +62,25 @@ pub struct MavlinkConfig {
     pub connection_string: String,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct OtaConfig {
+    pub enable: bool,
+    pub strategy: String,
+    pub check_interval: u32,
+    pub download_dir: Option<String>,
+    pub github_repo: String,
+    pub launcher: bool,
+}
+
 impl LoadConfig for GatewayConfig {}
+
+impl From<OtaConfig> for luffy_common::ota::version::VersionConfig {
+    fn from(config: OtaConfig) -> Self {
+        Self {
+            strategy: config.strategy,
+            check_interval: config.check_interval,
+            download_dir: config.download_dir,
+            github_repo: config.github_repo,
+        }
+    }
+}

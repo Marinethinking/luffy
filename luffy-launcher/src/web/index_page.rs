@@ -2,13 +2,16 @@ use askama::Template;
 use axum::{
     response::{Html, IntoResponse},
     routing::get,
+    routing::post,
     Json, Router,
+    http::StatusCode,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::env;
-use std::sync::Arc;
-use std::time::{SystemTime, Duration};
 
+use std::time::{Duration, SystemTime};
+
+use crate::ota::version::VersionManager;
 use crate::{
     config::CONFIG,
     monitor::{mqtt::MqttMonitor, service::ServiceStatus, vehicle::VehicleState},
@@ -39,6 +42,8 @@ pub struct ServiceStatusViewModel {
     pub status: String,
     pub last_health_report: String,
     pub version: String,
+    pub update_available: bool,
+    pub available_version: String,
 }
 
 // Template
@@ -90,44 +95,53 @@ impl StatusViewModel {
         let services = monitor.get_services_snapshot().await.unwrap_or_default();
 
         let service_names = ["gateway", "launcher", "media"];
-        
-        service_names.iter().map(|&name| {
-            let state = services.services.get(name);
-            let (status, last_report, version) = if let Some(state) = state {
-                let elapsed = SystemTime::now()
-                    .duration_since(state.last_health_report)
-                    .unwrap_or(Duration::from_secs(0));
-                
-                let status = if elapsed.as_secs() > 60 {
-                    ServiceStatus::Unknown
+
+        service_names
+            .iter()
+            .map(|&name| {
+                let state = services.services.get(name);
+                let (status, last_report, version) = if let Some(state) = state {
+                    let elapsed = SystemTime::now()
+                        .duration_since(state.last_health_report)
+                        .unwrap_or(Duration::from_secs(0));
+
+                    let status = if elapsed.as_secs() > 60 {
+                        ServiceStatus::Unknown
+                    } else {
+                        state.status.clone()
+                    };
+
+                    let time_str = if elapsed.as_secs() < 60 {
+                        format!("{}s", elapsed.as_secs())
+                    } else if elapsed.as_secs() < 3600 {
+                        format!("{}m", elapsed.as_secs() / 60)
+                    } else {
+                        format!("{}h", elapsed.as_secs() / 3600)
+                    };
+
+                    (status, time_str, state.version.clone())
                 } else {
-                    state.status.clone()
+                    (
+                        ServiceStatus::Unknown,
+                        "Never".to_string(),
+                        "Unknown".to_string(),
+                    )
                 };
 
-                let time_str = if elapsed.as_secs() < 60 {
-                    format!("{}s", elapsed.as_secs())
-                } else if elapsed.as_secs() < 3600 {
-                    format!("{}m", elapsed.as_secs() / 60)
-                } else {
-                    format!("{}h", elapsed.as_secs() / 3600)
-                };
-
-                (status, time_str, state.version.clone())
-            } else {
-                (ServiceStatus::Unknown, "Never".to_string(), "Unknown".to_string())
-            };
-
-            ServiceStatusViewModel {
-                name: name.to_string(),
-                status: match status {
-                    ServiceStatus::Running => "Running".to_string(),
-                    ServiceStatus::Stopped => "Stopped".to_string(),
-                    ServiceStatus::Unknown => "Unknown".to_string(),
-                },
-                last_health_report: last_report,
-                version,
-            }
-        }).collect()
+                ServiceStatusViewModel {
+                    name: name.to_string(),
+                    status: match status {
+                        ServiceStatus::Running => "Running".to_string(),
+                        ServiceStatus::Stopped => "Stopped".to_string(),
+                        ServiceStatus::Unknown => "Unknown".to_string(),
+                    },
+                    last_health_report: last_report,
+                    version,
+                    update_available: false,
+                    available_version: "Unknown".to_string(),
+                }
+            })
+            .collect()
     }
 }
 
@@ -136,6 +150,7 @@ pub async fn routes() -> Router {
     Router::new()
         .route("/", get(index_page))
         .route("/api/status", get(status_api))
+        .route("/api/update", post(update_service))
 }
 
 async fn index_page() -> impl IntoResponse {
@@ -156,4 +171,19 @@ async fn status_api() -> impl IntoResponse {
     status.services = services_view;
 
     Json(status)
+}
+
+async fn update_service(Json(payload): Json<UpdateRequest>) -> impl IntoResponse {
+    let version_manager = VersionManager::new();
+
+    match version_manager.manual_update(&payload.service).await {
+        Ok(_) => StatusCode::OK,
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
+
+#[derive(Deserialize)]
+struct UpdateRequest {
+    service: String,
+    version: String,
 }

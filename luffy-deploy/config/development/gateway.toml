@@ -26,3 +26,12 @@ remote_interval = 4 # seconds
 [mavlink]
 connection_string = "udpin:192.168.20.167:14559"  
 
+
+[ota]
+enable = true
+strategy = "manual"  # auto, manual, or disabled
+check_interval = 3600  # seconds
+download_dir = "/home/luffy/.deb"
+github_repo = "Marinethinking/luffy"
+launcher = true  # whether to update luffy-launcher
+

@@ -67,6 +67,7 @@ async fn spawn_ota_checker(mut shutdown: broadcast::Receiver<()>) -> tokio::task
             }
             _ = shutdown.recv() => {
                 info!("Shutting down OTA checker...");
+                ota.stop();
             }
         }
     })

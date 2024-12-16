@@ -72,17 +72,33 @@ fn setup_prod_logging(log_level: &str, service_name: &str) -> bool {
         .with_line_number(true)
         .pretty();
 
-    let all_log_appender = RollingFileAppender::new(
-        Rotation::DAILY,
-        log_dir,
-        format!("{}-all.log", service_name),
-    );
+    // let all_log_appender = RollingFileAppender::new(
+    //     Rotation::DAILY,
+    //     log_dir,
+    //     format!("{}-all.log", service_name),
+    // );
 
-    let error_log_appender = RollingFileAppender::new(
-        Rotation::DAILY,
-        log_dir,
-        format!("{}-error.log", service_name),
-    );
+    // let error_log_appender = RollingFileAppender::new(
+    //     Rotation::DAILY,
+    //     log_dir,
+    //     format!("{}-error.log", service_name),
+    // );
+
+    let all_log_appender = RollingFileAppender::builder()
+        .rotation(Rotation::DAILY)
+        .filename_prefix(format!("{}-all", service_name)) // base name
+        .filename_suffix("log") // extension
+        .max_log_files(30)
+        .build(log_dir)
+        .unwrap();
+
+    let error_log_appender = RollingFileAppender::builder()
+        .rotation(Rotation::DAILY)
+        .filename_prefix(format!("{}-error", service_name))
+        .filename_suffix("log")
+        .max_log_files(30)
+        .build(log_dir)
+        .unwrap();
 
     tracing_subscriber::registry()
         .with(console_layer)

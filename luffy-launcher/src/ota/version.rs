@@ -1,32 +1,15 @@
 use crate::config::CONFIG;
-use crate::ota::deb::{DebManager, ServiceType};
-use anyhow::{anyhow, Context, Result};
-use reqwest;
-use semver::Version;
-use serde::{Deserialize, Serialize};
+use anyhow::{anyhow, Result};
+use luffy_common::ota::deb::ServiceType;
+use luffy_common::ota::version::BaseVersionManager;
 use std::collections::HashMap;
-use std::path::PathBuf;
-use tokio::time::{interval, Duration};
+use std::sync::{atomic::AtomicBool, Arc};
 use tracing::{info, warn};
 
-#[derive(Debug, Deserialize)]
-struct GithubRelease {
-    tag_name: String,
-    assets: Vec<GithubAsset>,
-}
-
-#[derive(Debug, Deserialize)]
-struct GithubAsset {
-    name: String,
-    browser_download_url: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Clone)]
 pub struct VersionManager {
-    strategy: String,
-    current_version: String,
-    check_interval: Duration,
-    deb_manager: DebManager,
+    base: BaseVersionManager,
+    running: Arc<AtomicBool>,
 }
 
 impl Default for VersionManager {
@@ -37,106 +20,77 @@ impl Default for VersionManager {
 
 impl VersionManager {
     pub fn new() -> Self {
-        let work_dir = PathBuf::from(
-            CONFIG
-                .ota
-                .download_dir
-                .clone()
-                .unwrap_or("/home/luffy/.deb".to_string()),
-        );
-
         Self {
-            strategy: CONFIG.ota.strategy.clone(),
-            current_version: env!("CARGO_PKG_VERSION").to_string(),
-            check_interval: Duration::from_secs(CONFIG.ota.check_interval as u64),
-            deb_manager: DebManager::new(work_dir),
+            base: BaseVersionManager::new(CONFIG.ota.clone().into()),
+            running: Arc::new(AtomicBool::new(true)),
         }
+    }
+
+    pub fn get_current_version(&self) -> &str {
+        self.base.get_current_version()
     }
 
     pub async fn get_latest_version(&self) -> Result<(String, Vec<(String, String)>)> {
-        let client = reqwest::Client::new();
-        let url = format!(
-            "https://api.github.com/repos/{}/releases/latest",
-            CONFIG.ota.github_repo
-        );
+        self.base.get_latest_version().await
+    }
 
-        info!("Requesting GitHub releases from: {}", url);
-
-        let mut request = client
-            .get(&url)
-            .header("User-Agent", "luffy-updater")
-            .header("Accept", "application/vnd.github.v3+json");
-
-        // Add authorization token from environment variable
-        if let Ok(token) = std::env::var("LUFFY_GITHUB_TOKEN") {
-            request = request.header("Authorization", format!("Bearer {}", token));
-        } else {
-            warn!("LUFFY_GITHUB_TOKEN not found in environment variables");
-        }
-
-        let response = request.send().await.context("Failed to fetch releases")?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_body = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Could not read error response".to_string());
-
-            return Err(anyhow!(
-                "GitHub API request failed. Status: {}, Body: {}",
-                status,
-                error_body
-            ));
-        }
-
-        let release: GithubRelease = response.json().await?;
-
-        // Filter and collect all .deb assets
-        let deb_assets: Vec<(String, String)> = release
-            .assets
-            .iter()
-            .filter(|asset| {
-                asset.name.ends_with(".deb") && {
-                    let package_name = asset.name.split('_').next().unwrap_or("");
-                    self.should_update_package(package_name)
-                }
-            })
-            .map(|asset| (asset.name.clone(), asset.browser_download_url.clone()))
+    pub async fn manual_update(&self, service: &str) -> Result<()> {
+        let (_, packages) = self.get_latest_version().await?;
+        let service_packages: Vec<(String, String)> = packages
+            .into_iter()
+            .filter(|(filename, _)| filename.starts_with(service))
             .collect();
 
-        if deb_assets.is_empty() {
-            return Err(anyhow!("No applicable .deb packages found in release"));
+        if service_packages.is_empty() {
+            return Err(anyhow!("No updates found for {}", service));
         }
 
-        Ok((release.tag_name, deb_assets))
+        self.update_package(service_packages).await
     }
 
     pub async fn update_package(&self, packages: Vec<(String, String)>) -> Result<()> {
-        // Filter out launcher updates, we will update luffy-launcher from lufy-gateway
         let service_packages: Vec<(String, String)> = packages
             .into_iter()
             .filter(|(filename, _)| !filename.starts_with("luffy-launcher"))
+            .filter(|(filename, _)| {
+                if let Some(package_name) = filename.split('_').next() {
+                    if let Some(new_version) =
+                        self.base.deb_manager.extract_package_version(filename)
+                    {
+                        self.base
+                            .deb_manager
+                            .needs_update(package_name, &new_version)
+                            .unwrap_or(false)
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            })
             .collect();
 
         if service_packages.is_empty() {
             info!("No service updates to process");
             return Ok(());
         }
+        info!("Updates available: {:?}", service_packages);
 
-        // Group packages by service type
         let mut updates_by_service: HashMap<ServiceType, Vec<(String, String)>> = HashMap::new();
         for package in service_packages {
-            let service_type = self.deb_manager.get_service_type(&package.0);
+            let service_type = self.base.deb_manager.get_service_type(&package.0);
             updates_by_service
                 .entry(service_type)
                 .or_default()
                 .push(package);
         }
 
-        // Process updates service by service
         for (service_type, packages) in &updates_by_service {
-            if let Err(e) = self.update_service(service_type, packages).await {
+            if let Err(e) = self
+                .base
+                .update_service_packages(service_type, packages)
+                .await
+            {
                 warn!("Failed to update {:?}: {}", service_type, e);
                 return Err(e);
             }
@@ -146,137 +100,131 @@ impl VersionManager {
         Ok(())
     }
 
-    async fn update_service(
-        &self,
-        service_type: &ServiceType,
-        packages: &[(String, String)],
-    ) -> Result<()> {
-        info!("Processing updates for {:?}", service_type);
+    pub async fn check_updates(&self) -> Result<Vec<(String, String)>> {
+        let (_, all_packages) = self.get_latest_version().await?;
 
-        // Download packages
-        let mut downloaded_files = Vec::new();
-        for (filename, url) in packages {
-            info!("Downloading {} from {}", filename, url);
-            match self.deb_manager.download_deb(url, filename).await {
-                Ok(path) => downloaded_files.push(path),
-                Err(e) => {
-                    for path in downloaded_files {
-                        let _ = tokio::fs::remove_file(path).await;
+        // Filter packages that need updates
+        let updates = all_packages
+            .into_iter()
+            .filter(|(filename, _)| !filename.starts_with("luffy-launcher"))
+            .filter(|(filename, _)| {
+                if let Some(package_name) = filename.split('_').next() {
+                    if let Some(new_version) =
+                        self.base.deb_manager.extract_package_version(filename)
+                    {
+                        self.base
+                            .deb_manager
+                            .needs_update(package_name, &new_version)
+                            .unwrap_or(false)
+                    } else {
+                        false
                     }
-                    return Err(e);
+                } else {
+                    false
                 }
-            }
-        }
-
-        // Stop service
-        if let Err(e) = self.deb_manager.stop_service(service_type).await {
-            warn!("Failed to stop {:?}: {}", service_type, e);
-        }
-
-        // Install packages
-        let mut install_failed = false;
-        for deb_path in &downloaded_files {
-            if !self.deb_manager.install_package(deb_path).await? {
-                install_failed = true;
-                break;
-            }
-        }
-
-        if install_failed {
-            warn!("Update failed for {:?}, attempting rollback", service_type);
-            // Try to rollback using last installed version
-            for (filename, _) in packages {
-                let package_name = filename.split('_').next().unwrap_or("");
-                if !self
-                    .deb_manager
-                    .install_from_last_installed(package_name)
-                    .await?
-                {
-                    warn!("Rollback failed for {}", package_name);
-                }
-            }
-            return Err(anyhow!("Service update failed"));
-        }
-
-        // Start service
-        if let Err(e) = self.deb_manager.start_service(service_type).await {
-            warn!("Failed to start {:?}: {}", service_type, e);
-        }
-
-        Ok(())
+            })
+            .collect();
+        info!("Found updates {:?}", updates);
+        Ok(updates)
     }
 
     pub async fn check_and_apply_updates(&self) -> Result<()> {
-        let (latest_version, all_packages) = self.get_latest_version().await?;
-
-        // Filter packages to only include those that are currently installed
-        let packages: Vec<(String, String)> = all_packages
-            .into_iter()
-            .filter(|(filename, _)| {
-                let package_name = filename.split('_').next().unwrap_or("");
-                self.deb_manager.is_package_installed(package_name)
-            })
-            .collect();
-
-        if packages.is_empty() {
-            info!("No installed packages to update");
-            return Ok(());
-        }
-
-        let current = Version::parse(&self.current_version)?;
-        let latest = Version::parse(latest_version.trim_start_matches('v'))?;
-
-        if latest > current {
-            info!("New version available: {} -> {}", current, latest);
-            match self.update_package(packages).await {
-                Ok(_) => info!("Update successful - services will be restarted by dpkg"),
-                Err(e) => warn!("Update failed: {}", e),
+        match self.base.strategy.as_str() {
+            "auto" => {
+                let updates = self.check_updates().await?;
+                if !updates.is_empty() {
+                    self.update_package(updates).await?;
+                }
+                Ok(())
             }
-        } else {
-            info!("Already running the latest version {}", current);
+            "manual" => {
+                let updates = self.check_updates().await?;
+                if !updates.is_empty() {
+                    info!("Updates available: {:?}", updates);
+                }
+                Ok(())
+            }
+            _ => Ok(()),
         }
-        Ok(())
+    }
+
+    pub fn stop(&self) {
+        self.running
+            .store(false, std::sync::atomic::Ordering::Relaxed);
     }
 
     pub async fn start(&self) -> Result<()> {
-        if luffy_common::util::is_dev() {
-            // return Ok(());
-        }
+        let mut interval = tokio::time::interval(self.base.check_interval);
+        let manager = self.clone();
 
-        match self.strategy.as_str() {
+        self.running
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+
+        match self.base.strategy.as_str() {
             "auto" => {
                 info!(
                     "Starting auto update task with interval: {:?}",
-                    self.check_interval
+                    self.base.check_interval
                 );
-                let mut interval = interval(self.check_interval);
-                let manager = self.clone();
 
-                tokio::spawn(async move {
-                    loop {
-                        interval.tick().await;
-                        if let Err(e) = manager.check_and_apply_updates().await {
-                            warn!("Auto update check failed: {}", e);
-                        }
+                while self.running.load(std::sync::atomic::Ordering::Relaxed) {
+                    interval.tick().await;
+                    if let Err(e) = manager.check_and_apply_updates().await {
+                        warn!("Auto update check failed: {}", e);
                     }
-                });
+                }
+                Ok(())
             }
-            "manual" => info!("Manual update mode - waiting for upstream commands"),
-            "disabled" => info!("Version upgrades are disabled"),
-            _ => return Err(anyhow!("Invalid upgrade strategy: {}", self.strategy)),
-        }
-        Ok(())
-    }
+            "manual" => {
+                info!(
+                    "Starting manual update check with interval: {:?}",
+                    self.base.check_interval
+                );
 
-    pub fn get_current_version(&self) -> &str {
-        &self.current_version
-    }
+                while self.running.load(std::sync::atomic::Ordering::Relaxed) {
+                    interval.tick().await;
+                    match manager.check_updates().await {
+                        Ok(updates) => {
+                            if !updates.is_empty() {
+                                let update_info: Vec<_> = updates
+                                    .iter()
+                                    .filter_map(|(filename, _)| {
+                                        let package_name = filename.split('_').next()?;
+                                        let new_version = self
+                                            .base
+                                            .deb_manager
+                                            .extract_package_version(filename)?;
+                                        let current_version = self
+                                            .base
+                                            .deb_manager
+                                            .get_package_version(package_name)
+                                            .ok()?;
+                                        Some((package_name, current_version, new_version))
+                                    })
+                                    .collect();
 
-    fn should_update_package(&self, package_name: &str) -> bool {
-        match package_name {
-            "luffy-gateway" => CONFIG.ota.gateway,
-            "luffy-media" => CONFIG.ota.media,
-            _ => false,
+                                info!(
+                                    "Updates available: {}",
+                                    update_info
+                                        .iter()
+                                        .map(|(pkg, curr, new)| format!(
+                                            "{}: {} -> {}",
+                                            pkg, curr, new
+                                        ))
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                                );
+                            }
+                        }
+                        Err(e) => warn!("Manual update check failed: {}", e),
+                    }
+                }
+                Ok(())
+            }
+            _ => {
+                info!("Updates are disabled");
+                Ok(())
+            }
         }
     }
 }
