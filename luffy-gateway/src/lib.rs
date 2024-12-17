@@ -4,6 +4,6 @@ pub mod config;
 
 pub mod mav_server;
 
-pub mod vehicle;
-
 pub mod iot;
+pub mod ota;
+pub mod vehicle;

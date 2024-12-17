@@ -15,26 +15,20 @@ use luffy_common::util;
 pub struct RemoteIotClient {
     client: Option<AsyncClient>,
     running: Arc<AtomicBool>,
-}
-
-impl Default for RemoteIotClient {
-    fn default() -> Self {
-        Self::new()
-    }
+    on_message: fn(topic: String, payload: String),
 }
 
 impl RemoteIotClient {
-    pub fn new() -> Self {
+    pub fn new(on_message: fn(topic: String, payload: String)) -> Self {
         Self {
             client: None,
             running: Arc::new(AtomicBool::new(true)),
+            on_message,
         }
     }
 
-    pub async fn start(&mut self) -> Result<JoinHandle<()>> {
+    pub async fn start(&mut self) -> Result<()> {
         info!("Starting IoT client...");
-        let vehicle = Vehicle::instance().await;
-        let vehicle_id = vehicle.vehicle_id.clone();
         if !self.is_registered() {
             let aws_client = AwsClient::instance().await;
             aws_client
@@ -47,22 +41,15 @@ impl RemoteIotClient {
         let mqtt_client = self.connect().await?;
         self.client = Some(mqtt_client.clone());
 
-        mqtt_client
-            .subscribe(format!("{}/command/#", vehicle_id), QoS::AtLeastOnce)
-            .await
-            .context("Failed to subscribe")?;
-
-        debug!("[IOT]Successfully subscribed to {}/command/#", vehicle_id);
-
         let running = self.running.clone();
 
-        let handle = tokio::spawn(async move {
+        tokio::spawn(async move {
             while running.load(Ordering::SeqCst) {
                 Self::telemetry_loop(mqtt_client.clone(), running.clone()).await;
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }
         });
-        Ok(handle)
+        Ok(())
     }
 
     async fn telemetry_loop(client: AsyncClient, running: Arc<AtomicBool>) {
@@ -134,7 +121,7 @@ impl RemoteIotClient {
 
         mqtt_options.set_transport(transport);
         let (client, mut eventloop) = rumqttc::AsyncClient::new(mqtt_options, 10);
-
+        let on_message = self.on_message;
         tokio::spawn(async move {
             debug!("Starting iot event loop...");
             loop {
@@ -151,9 +138,11 @@ impl RemoteIotClient {
                             p.topic,
                             String::from_utf8_lossy(&p.payload)
                         );
-                        if let Err(e) = Self::handle_message(&p.topic, &p.payload).await {
-                            error!("[IOT]Failed to handle message: {}", e);
-                        }
+                        // if let Err(e) = Self::handle_message(&p.topic, &p.payload).await {
+                        //     error!("[IOT]Failed to handle message: {}", e);
+                        // }
+                        let payload_str = String::from_utf8_lossy(&p.payload).to_string();
+                        on_message(p.topic, payload_str);
                     }
                     Ok(_) => {}
                     Err(e) => {
@@ -219,5 +208,12 @@ impl RemoteIotClient {
 
         let cert_path = config_dir.join("certificate.pem");
         cert_path.exists()
+    }
+
+    pub async fn subscribe(&self, topic: String) -> Result<()> {
+        if let Some(client) = &self.client {
+            client.subscribe(topic, QoS::AtLeastOnce).await?
+        }
+        Ok(())
     }
 }

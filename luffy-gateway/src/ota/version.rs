@@ -1,15 +1,21 @@
 use std::sync::{atomic::AtomicBool, Arc};
 
+use crate::config::CONFIG;
 use anyhow::{anyhow, Result};
 use luffy_common::ota::deb::ServiceType;
 use luffy_common::ota::version::BaseVersionManager;
-use luffy_gateway::config::CONFIG;
 use tracing::{info, warn};
 
 #[derive(Clone)]
 pub struct VersionManager {
     base: BaseVersionManager,
     running: Arc<AtomicBool>,
+}
+
+impl Default for VersionManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl VersionManager {
@@ -42,7 +48,7 @@ impl VersionManager {
         Ok(updates)
     }
 
-    pub async fn check_and_apply_updates(&self) -> Result<()> {
+    pub async fn strategy_updates(&self) -> Result<()> {
         match self.base.strategy.as_str() {
             "auto" => {
                 let updates = self.check_updates().await?;
@@ -62,6 +68,14 @@ impl VersionManager {
         }
     }
 
+    pub async fn check_and_apply_updates(&self) -> Result<()> {
+        let updates = self.check_updates().await?;
+        if !updates.is_empty() {
+            self.update_launcher(updates).await?;
+        }
+        Ok(())
+    }
+
     async fn update_launcher(&self, packages: Vec<(String, String)>) -> Result<()> {
         let service_type = ServiceType::Other("luffy-launcher".to_string());
         self.base
@@ -70,14 +84,16 @@ impl VersionManager {
     }
 
     pub fn stop(&self) {
-        self.running.store(false, std::sync::atomic::Ordering::Relaxed);
+        self.running
+            .store(false, std::sync::atomic::Ordering::Relaxed);
     }
 
     pub async fn start(&self) -> Result<()> {
         let mut interval = tokio::time::interval(self.base.check_interval);
         let manager = self.clone();
 
-        self.running.store(true, std::sync::atomic::Ordering::Relaxed);
+        self.running
+            .store(true, std::sync::atomic::Ordering::Relaxed);
 
         match self.base.strategy.as_str() {
             "auto" => {
@@ -88,7 +104,7 @@ impl VersionManager {
 
                 while self.running.load(std::sync::atomic::Ordering::Relaxed) {
                     interval.tick().await;
-                    if let Err(e) = manager.check_and_apply_updates().await {
+                    if let Err(e) = manager.strategy_updates().await {
                         warn!("Auto update check failed: {}", e);
                     }
                 }

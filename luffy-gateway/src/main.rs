@@ -1,5 +1,3 @@
-mod ota;
-
 use anyhow::Result;
 
 use luffy_gateway::broker::MqttBroker;
@@ -11,7 +9,7 @@ use tokio::signal;
 use tokio::sync::broadcast;
 use tracing::{error, info};
 
-use crate::ota::version::VersionManager;
+use luffy_gateway::ota::version::VersionManager;
 
 #[tokio::main]
 async fn main() -> Result<()> {
