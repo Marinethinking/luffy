@@ -4,7 +4,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use rumqttc::{AsyncClient, Event, Packet, QoS};
 use serde_json::json;
-use serde_json::Value as JsonValue;
+
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};

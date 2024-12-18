@@ -13,7 +13,7 @@ use tokio::sync::{Mutex, RwLock};
 use tracing::{debug, info};
 
 // Add static instance
-static MQTT_MONITOR: OnceCell<Arc<MqttMonitor>> = OnceCell::const_new();
+pub static MQTT_MONITOR: OnceCell<Arc<MqttMonitor>> = OnceCell::const_new();
 
 // Add this struct to deserialize telemetry data
 #[derive(Debug, Deserialize)]
@@ -28,7 +28,7 @@ struct TelemetryData {
 pub struct MqttMonitor {
     pub services: Arc<RwLock<Services>>,
     pub vehicle: Arc<RwLock<VehicleState>>,
-    client: Arc<Mutex<MqttClient>>,
+    pub client: Arc<Mutex<MqttClient>>,
 }
 
 impl MqttMonitor {
@@ -94,7 +94,12 @@ impl MqttMonitor {
             if let Ok(health) = serde_json::from_str::<HealthReport>(&payload) {
                 let mut services = instance.services.write().await;
                 let version = health.version.clone();
-                services.set_service(service_name, ServiceStatus::Running, version);
+                services.set_service(
+                    service_name,
+                    Some(ServiceStatus::Running),
+                    Some(version),
+                    None,
+                );
                 debug!(
                     "Service {} is running with version {}",
                     service_name, health.version

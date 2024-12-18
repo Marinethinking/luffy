@@ -1,23 +1,25 @@
+use anyhow::Result;
 use askama::Template;
 use axum::{
+    http::StatusCode,
     response::{Html, IntoResponse},
     routing::get,
     routing::post,
     Json, Router,
-    http::StatusCode,
 };
 use serde::{Deserialize, Serialize};
 use std::env;
+use tracing::info;
 
 use std::time::{Duration, SystemTime};
 
-use crate::ota::version::VersionManager;
 use crate::{
     config::CONFIG,
     monitor::{mqtt::MqttMonitor, service::ServiceStatus, vehicle::VehicleState},
 };
+use crate::{monitor::mqtt::MQTT_MONITOR, ota::version::VersionManager};
 use luffy_common::util;
-
+use semver::Version;
 // View Models
 #[derive(Debug, Serialize)]
 pub struct StatusViewModel {
@@ -100,7 +102,7 @@ impl StatusViewModel {
             .iter()
             .map(|&name| {
                 let state = services.services.get(name);
-                let (status, last_report, version) = if let Some(state) = state {
+                let (status, last_report, version, latest_version) = if let Some(state) = state {
                     let elapsed = SystemTime::now()
                         .duration_since(state.last_health_report)
                         .unwrap_or(Duration::from_secs(0));
@@ -118,16 +120,23 @@ impl StatusViewModel {
                     } else {
                         format!("{}h", elapsed.as_secs() / 3600)
                     };
+                    let latest_version = state
+                        .latest_version
+                        .clone()
+                        .unwrap_or("Unknown".to_string());
 
-                    (status, time_str, state.version.clone())
+                    (status, time_str, state.version.clone(), latest_version)
                 } else {
                     (
                         ServiceStatus::Unknown,
                         "Never".to_string(),
                         "Unknown".to_string(),
+                        "Unknown".to_string(),
                     )
                 };
 
+                let update_available =
+                    Self::is_update_available(version.clone(), latest_version.clone());
                 ServiceStatusViewModel {
                     name: name.to_string(),
                     status: match status {
@@ -137,11 +146,22 @@ impl StatusViewModel {
                     },
                     last_health_report: last_report,
                     version,
-                    update_available: false,
-                    available_version: "Unknown".to_string(),
+                    update_available,
+                    available_version: latest_version,
                 }
             })
             .collect()
+    }
+
+    fn is_update_available(currnet_version: String, latest_version: String) -> bool {
+        if currnet_version == "Unknown" || latest_version == "Unknown" {
+            return false;
+        }
+
+        let current_version = Version::parse(&currnet_version).unwrap();
+        let latest_version = Version::parse(&latest_version).unwrap();
+
+        current_version < latest_version
     }
 }
 
@@ -174,15 +194,30 @@ async fn status_api() -> impl IntoResponse {
 }
 
 async fn update_service(Json(payload): Json<UpdateRequest>) -> impl IntoResponse {
+    info!("Updating service {:?}", payload);
     let version_manager = VersionManager::new();
-
+    let service = payload.service.to_lowercase();
+    if service == "launcher" {
+        send_update_request().await.unwrap();
+        return StatusCode::OK;
+    }
     match version_manager.manual_update(&payload.service).await {
         Ok(_) => StatusCode::OK,
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
 
-#[derive(Deserialize)]
+async fn send_update_request() -> Result<()> {
+    info!("Sending update request");
+    let vehicle_id = util::get_vehicle_id(&CONFIG.base);
+    let monitor = MQTT_MONITOR.get().unwrap();
+    let mqtt_client = monitor.client.lock().await;
+    mqtt_client
+        .publish(&format!("{}/ota/request", vehicle_id), "update")
+        .await
+}
+
+#[derive(Deserialize, Debug)]
 struct UpdateRequest {
     service: String,
     version: String,

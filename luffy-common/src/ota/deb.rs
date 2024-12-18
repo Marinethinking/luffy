@@ -3,13 +3,14 @@ use serde::{Deserialize, Serialize};
 
 use std::path::PathBuf;
 use std::process::Command;
+use strum_macros::Display;
 use tokio::fs;
 
 use tracing::{info, warn};
 
 use semver::Version;
 
-#[derive(Debug, Hash, Eq, PartialEq)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone, Display)]
 pub enum ServiceType {
     Gateway,
     Media,
@@ -224,6 +225,7 @@ impl DebManager {
         match package_name {
             name if name.starts_with("luffy-gateway") => ServiceType::Gateway,
             name if name.starts_with("luffy-media") => ServiceType::Media,
+            name if name.starts_with("luffy-launcher") => ServiceType::Launcher,
             name => ServiceType::Other(name.to_string()),
         }
     }

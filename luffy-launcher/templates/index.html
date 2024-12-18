@@ -57,15 +57,14 @@
                     {% for service in status.services %}
                     <div class="service-item">
                         <label>{{ service.name }}:</label>
-                        <span class="status-indicator {% if service.status == "Running" %}connected{% else %}disconnected{% endif %}">
+                        <span class="status-indicator {% if service.status == " Running" %}connected{% else
+                            %}disconnected{% endif %}">
                             {{ service.status }}
                         </span>
                         <span class="version-tag">v{{ service.version }}</span>
                         <span class="health-time">(Last health: {{ service.last_health_report }} ago)</span>
                         {% if service.update_available %}
-                        <button 
-                            class="update-button" 
-                            data-service="{{ service.name }}"
+                        <button class="update-button" data-service="{{ service.name }}"
                             data-version="{{ service.available_version }}">
                             Update to v{{ service.available_version }}
                         </button>
@@ -117,6 +116,12 @@
                             </span>
                             <span class="version-tag">v${service.version}</span>
                             <span class="health-time">(Last report: ${service.last_health_report} ago)</span>
+                            ${service.update_available ? `
+                                <button class="update-button" data-service="${service.name}"
+                                    data-version="${service.available_version}">
+                                    Update to v${service.available_version}
+                                </button>
+                            ` : ''}
                         </div>
                     `).join('');
                 }
@@ -130,11 +135,11 @@
                 const service = e.target.dataset.service;
                 const version = e.target.dataset.version;
                 const button = e.target;
-                
+
                 try {
                     button.disabled = true;
                     button.textContent = 'Updating...';
-                    
+
                     const response = await fetch('/api/update', {
                         method: 'POST',
                         headers: {
@@ -145,11 +150,11 @@
                             version
                         })
                     });
-                    
+
                     if (!response.ok) {
                         throw new Error('Update failed');
                     }
-                    
+
                     button.textContent = 'Update Complete!';
                     setTimeout(() => {
                         button.remove();

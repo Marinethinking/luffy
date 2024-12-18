@@ -1,4 +1,5 @@
 use crate::config::CONFIG;
+use crate::monitor::mqtt::MQTT_MONITOR;
 use anyhow::{anyhow, Result};
 use luffy_common::ota::deb::ServiceType;
 use luffy_common::ota::version::BaseVersionManager;
@@ -38,7 +39,7 @@ impl VersionManager {
         let (_, packages) = self.get_latest_version().await?;
         let service_packages: Vec<(String, String)> = packages
             .into_iter()
-            .filter(|(filename, _)| filename.starts_with(service))
+            .filter(|(filename, _)| filename.contains(service))
             .collect();
 
         if service_packages.is_empty() {
@@ -104,7 +105,8 @@ impl VersionManager {
         let (_, all_packages) = self.get_latest_version().await?;
 
         // Filter packages that need updates
-        let updates = all_packages
+        let updates: Vec<(String, String)> = all_packages
+            .clone()
             .into_iter()
             .filter(|(filename, _)| !filename.starts_with("luffy-launcher"))
             .filter(|(filename, _)| {
@@ -124,8 +126,19 @@ impl VersionManager {
                 }
             })
             .collect();
+        self.set_latest_version(all_packages).await;
         info!("Found updates {:?}", updates);
         Ok(updates)
+    }
+
+    async fn set_latest_version(&self, packages: Vec<(String, String)>) {
+        let monitor = MQTT_MONITOR.get().unwrap();
+        let mut services = monitor.services.write().await;
+        for (package, _) in packages {
+            let service = self.base.deb_manager.get_service_type(&package);
+            let version = self.base.deb_manager.extract_package_version(&package);
+            services.set_service(&service.to_string(), None, None, version);
+        }
     }
 
     pub async fn check_and_apply_updates(&self) -> Result<()> {
