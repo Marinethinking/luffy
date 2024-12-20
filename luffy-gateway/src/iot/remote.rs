@@ -3,7 +3,7 @@ use rumqttc::{AsyncClient, QoS};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::fs;
-use tokio::task::JoinHandle;
+
 use tokio::time::Duration;
 use tracing::{debug, error, info};
 
@@ -104,8 +104,8 @@ impl RemoteIotClient {
         let aws_root_cert = include_bytes!("../../certs/AmazonRootCA.pem");
 
         let vehicle_id = util::get_vehicle_id(&CONFIG.base);
-        let aws_iot_endpoint = &CONFIG.aws.iot.endpoint;
-        let aws_iot_port = CONFIG.aws.iot.port;
+        let aws_iot_endpoint = &CONFIG.base.aws.iot.endpoint;
+        let aws_iot_port = CONFIG.base.aws.iot.port;
         let client_id = format!("{}_{}", vehicle_id, uuid::Uuid::new_v4());
         let mut mqtt_options = rumqttc::MqttOptions::new(client_id, aws_iot_endpoint, aws_iot_port);
 

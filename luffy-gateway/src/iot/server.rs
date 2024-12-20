@@ -2,21 +2,21 @@ use anyhow::Result;
 use tracing::{debug, error, info};
 
 use crate::config::CONFIG;
-use crate::iot::local::LocalIotClient;
+use crate::iot::local::LocalIotHandler;
 use crate::iot::remote::RemoteIotClient;
 use crate::ota::version::VersionManager;
 use crate::vehicle::Vehicle;
 
 pub struct IotServer {
     remote_client: Option<RemoteIotClient>,
-    local_client: Option<LocalIotClient>,
+    local_client: Option<LocalIotHandler>,
 }
 
 impl IotServer {
     pub async fn new() -> Self {
         Self {
             remote_client: Some(RemoteIotClient::new(Self::on_message)),
-            local_client: Some(LocalIotClient::new(Self::on_message)),
+            local_client: Some(LocalIotHandler::new(Self::on_message)),
         }
     }
 

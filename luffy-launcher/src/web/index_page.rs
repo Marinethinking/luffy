@@ -8,18 +8,25 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::env;
-use tracing::info;
+use tracing::{error, info};
 
 use std::time::{Duration, SystemTime};
 
 use crate::{
-    config::CONFIG,
+    config::CFG,
     monitor::{mqtt::MqttMonitor, service::ServiceStatus, vehicle::VehicleState},
 };
 use crate::{monitor::mqtt::MQTT_MONITOR, ota::version::VersionManager};
 use luffy_common::util;
+
 use semver::Version;
+use std::collections::HashMap;
+use std::sync::LazyLock;
+use std::sync::{Arc, Mutex};
+use tokio::sync::oneshot;
+
 // View Models
 #[derive(Debug, Serialize)]
 pub struct StatusViewModel {
@@ -59,7 +66,7 @@ impl From<VehicleState> for StatusViewModel {
     fn from(state: VehicleState) -> Self {
         Self {
             version: env!("CARGO_PKG_VERSION").to_string(),
-            vehicle_id: util::get_vehicle_id(&CONFIG.base),
+            vehicle_id: util::get_vehicle_id(&CFG.base),
             location: format!("{:.6}, {:.6}", state.location.0, state.location.1),
             yaw: state.yaw_degree,
             battery: state.battery_percentage,
@@ -77,7 +84,7 @@ impl StatusViewModel {
 
         Self {
             version: env!("CARGO_PKG_VERSION").to_string(),
-            vehicle_id: util::get_vehicle_id(&CONFIG.base),
+            vehicle_id: util::get_vehicle_id(&CFG.base),
             location: format!("{:.6}, {:.6}", state.location.0, state.location.1),
             yaw: state.yaw_degree,
             battery: state.battery_percentage,
@@ -209,7 +216,7 @@ async fn update_service(Json(payload): Json<UpdateRequest>) -> impl IntoResponse
 
 async fn send_update_request() -> Result<()> {
     info!("Sending update request");
-    let vehicle_id = util::get_vehicle_id(&CONFIG.base);
+    let vehicle_id = util::get_vehicle_id(&CFG.base);
     let monitor = MQTT_MONITOR.get().unwrap();
     let mqtt_client = monitor.client.lock().await;
     mqtt_client

@@ -1,4 +1,4 @@
-log_level = "info"
+log_level = "debug"
 
 [feature]
 local_iot = true
@@ -6,26 +6,8 @@ remote_iot = true
 broker = true
 mavlink = true
 
-[aws]
-region = "ca-central-1"
-
-[aws.iot]
-root_ca_path = "certs/AmazonRootCA.pem"
-endpoint = "a1w2o8b6t3ahv7-ats.iot.ca-central-1.amazonaws.com"
-port = 8883
-
-[aws.lambda]
-register = "arn:aws:lambda:ca-central-1:583818069008:function:amplify-d34e88yymcb7ax-de-registerIotThinglambdaCE-j14AZkH1hKNp"
-
-
-[iot]
-local_interval = 1 # seconds
-remote_interval = 4 # seconds
-
-
 [mavlink]
-connection_string = "udpin:192.168.20.167:14559"  
-
+connection_string = "udpin:192.168.20.167:14559"
 
 [ota]
 enable = true
@@ -34,4 +16,8 @@ check_interval = 3600  # seconds
 download_dir = "/home/luffy/.deb"
 github_repo = "Marinethinking/luffy"
 launcher = true  # whether to update luffy-launcher
+
+[iot]
+local_interval = 3
+remote_interval = 3
 

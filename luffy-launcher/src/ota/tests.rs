@@ -1,13 +1,12 @@
 #[cfg(test)]
 mod ota_tests {
-    use crate::config::CONFIG;
+    use crate::config::CFG;
 
     use super::super::version::VersionManager;
-    use super::super::*;
+
     use anyhow::Result;
     use std::env;
     use tracing::info;
-    use tracing_subscriber::{fmt, EnvFilter};
 
     fn init() {
         env::set_var("RUST_ENV", "dev");
@@ -41,7 +40,7 @@ mod ota_tests {
     #[tokio::test]
     async fn test_deb_update() -> Result<()> {
         init();
-        info!("Starting test_deb_update {}", CONFIG.ota.strategy);
+        info!("Starting test_deb_update {}", CFG.ota.strategy);
         let version_manager = VersionManager::new();
 
         // Test the update process

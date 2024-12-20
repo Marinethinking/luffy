@@ -9,6 +9,33 @@ pub struct BaseConfig {
     pub mqtt_host: String,
     pub mqtt_port: u16,
     pub health_report_interval: u64,
+    pub aws: AwsConfig,
+    // pub iot: IotConfig,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AwsConfig {
+    pub region: String,
+    pub iot: AwsIotConfig,
+    pub lambda: AwsLambdaConfig,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AwsIotConfig {
+    pub root_ca_path: String,
+    pub endpoint: String,
+    pub port: u16,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AwsLambdaConfig {
+    pub register: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct IotConfig {
+    pub local_interval: u64,
+    pub remote_interval: u64,
 }
 
 pub trait LoadConfig {

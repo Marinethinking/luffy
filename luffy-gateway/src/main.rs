@@ -17,7 +17,7 @@ async fn main() -> Result<()> {
     luffy_common::util::setup_logging(log_level, "gateway");
     info!("Application starting...");
 
-    info!("Region: {:?}", &CONFIG.aws.region);
+    info!("Region: {:?}", &CONFIG.base.aws.region);
 
     // Create a shutdown signal channel
     let (shutdown_tx, _) = broadcast::channel(1);

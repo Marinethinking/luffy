@@ -1,9 +1,11 @@
+use std::sync::LazyLock;
+
 use luffy_common::config::{BaseConfig, LoadConfig};
-use once_cell::sync::Lazy;
+
 use serde::Deserialize;
 
-pub static CONFIG: Lazy<GatewayConfig> =
-    Lazy::new(|| GatewayConfig::load_config("gateway").expect("Failed to load configuration"));
+pub static CONFIG: LazyLock<GatewayConfig> =
+    LazyLock::new(|| GatewayConfig::load_config("gateway").expect("Failed to load configuration"));
 
 #[derive(Debug, Deserialize)]
 pub struct GatewayConfig {
@@ -12,7 +14,7 @@ pub struct GatewayConfig {
     pub log_level: String,
     pub feature: FeatureConfig,
 
-    pub aws: AwsConfig,
+    // pub aws: AwsConfig,
     pub mavlink: MavlinkConfig,
     pub iot: IotConfig,
     pub ota: OtaConfig,

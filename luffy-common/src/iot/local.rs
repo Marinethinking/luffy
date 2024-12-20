@@ -1,17 +1,15 @@
 use std::cmp::min;
 use std::sync::Arc;
-
 use anyhow::Result;
 use rumqttc::{AsyncClient, Event, Packet, QoS};
 use serde_json::json;
-
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
 use tracing::{debug, error, info};
 
 #[derive(Clone, Debug)]
-pub struct MqttClient {
+pub struct LocalIotClient {
     host: String,
     port: u16,
     name: String,
@@ -23,7 +21,7 @@ pub struct MqttClient {
     subscriptions: Arc<Mutex<Vec<String>>>,
 }
 
-impl Default for MqttClient {
+impl Default for LocalIotClient {
     fn default() -> Self {
         Self {
             name: "mqtt-client".to_string(),
@@ -39,7 +37,7 @@ impl Default for MqttClient {
     }
 }
 
-impl MqttClient {
+impl LocalIotClient {
     pub fn new(
         name: String,
         host: String,
@@ -105,6 +103,7 @@ impl MqttClient {
         let on_message = self.on_message;
         let name = self.name.clone();
         let subscriptions = self.subscriptions.clone();
+
         // Spawn the connection handling task
         let connection_handle = tokio::spawn(async move {
             info!("🚀 Starting broker connection event loop for {}", name);
@@ -242,4 +241,4 @@ impl MqttClient {
     pub fn set_on_message(&mut self, on_message: fn(topic: String, payload: String)) {
         self.on_message = Some(on_message);
     }
-}
+} 

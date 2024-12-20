@@ -1,5 +1,6 @@
 pub mod config;
-pub mod mqtt;
+pub mod iot;
+pub mod aws;
 pub mod util;
 
 pub mod ota;

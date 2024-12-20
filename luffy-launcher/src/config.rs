@@ -1,9 +1,11 @@
+use std::sync::LazyLock;
+
 use luffy_common::config::{BaseConfig, LoadConfig};
-use once_cell::sync::Lazy;
 use serde::Deserialize;
 
-pub static CONFIG: Lazy<LauncherConfig> =
-    Lazy::new(|| LauncherConfig::load_config("launcher").expect("Failed to load configuration"));
+pub static CFG: LazyLock<LauncherConfig> = LazyLock::new(|| {
+    LauncherConfig::load_config("launcher").expect("Failed to load configuration")
+});
 
 #[derive(Debug, Deserialize)]
 pub struct LauncherConfig {

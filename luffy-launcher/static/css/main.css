@@ -123,3 +123,60 @@
     background-color: #cccccc;
     cursor: not-allowed;
 }
+
+/* Video Card Styles */
+.video-card {
+    grid-column: span 2;  /* Make video card span full width */
+    background: #1a1a1a;
+    border-radius: 8px;
+    padding: 15px;
+    margin-top: 20px;
+}
+
+.video-container {
+    position: relative;
+    width: 100%;
+    height: 0;
+    padding-bottom: 56.25%; /* 16:9 aspect ratio */
+    background: #000;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.video-container video {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.video-controls {
+    margin-top: 10px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.video-controls select {
+    padding: 5px;
+    border-radius: 4px;
+    background: #2a2a2a;
+    color: white;
+    border: 1px solid #3a3a3a;
+}
+
+.video-controls button {
+    padding: 5px 15px;
+    border-radius: 4px;
+    background: #2196F3;
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+
+.video-controls button:disabled {
+    background: #666;
+    cursor: not-allowed;
+}

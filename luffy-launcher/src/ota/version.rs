@@ -1,4 +1,4 @@
-use crate::config::CONFIG;
+use crate::config::CFG;
 use crate::monitor::mqtt::MQTT_MONITOR;
 use anyhow::{anyhow, Result};
 use luffy_common::ota::deb::ServiceType;
@@ -22,7 +22,7 @@ impl Default for VersionManager {
 impl VersionManager {
     pub fn new() -> Self {
         Self {
-            base: BaseVersionManager::new(CONFIG.ota.clone().into()),
+            base: BaseVersionManager::new(CFG.ota.clone().into()),
             running: Arc::new(AtomicBool::new(true)),
         }
     }

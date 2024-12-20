@@ -9,12 +9,14 @@ use tracing::info;
 
 use crate::config::CONFIG;
 use crate::vehicle::Vehicle;
+use luffy_common::iot::local::LocalIotClient;
 
 pub struct MavlinkServer {
     vehicle: &'static Vehicle,
     running: Arc<AtomicBool>,
     command_rx: mpsc::Receiver<MavCommand>,
     connection: Arc<Mutex<Option<Box<dyn MavConnection<MavMessage> + Send + Sync>>>>,
+    pub mqtt_client: Arc<Mutex<LocalIotClient>>,
 }
 
 // Commands that can be sent to the vehicle
@@ -31,6 +33,14 @@ impl MavlinkServer {
             running: Arc::new(AtomicBool::new(false)),
             command_rx: mpsc::channel(100).1,
             connection: Arc::new(Mutex::new(None)),
+            mqtt_client: Arc::new(Mutex::new(LocalIotClient::new(
+                "gateway".to_string(),
+                CONFIG.base.mqtt_host.to_string(),
+                CONFIG.base.mqtt_port,
+                None,
+                CONFIG.base.health_report_interval,
+                env!("CARGO_PKG_VERSION").to_string(),
+            ))),
         }
     }
 

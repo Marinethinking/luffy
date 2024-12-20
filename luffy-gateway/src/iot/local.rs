@@ -9,18 +9,18 @@ use tracing::{debug, error, info};
 
 use crate::config::CONFIG;
 use crate::vehicle::Vehicle;
-use luffy_common::mqtt::MqttClient;
+use luffy_common::iot::local::LocalIotClient;
 
-pub struct LocalIotClient {
-    mqtt_client: Arc<Mutex<MqttClient>>,
+pub struct LocalIotHandler {
+    mqtt_client: Arc<Mutex<LocalIotClient>>,
     running: Arc<AtomicBool>,
     on_message: fn(topic: String, payload: String),
 }
 
-impl LocalIotClient {
+impl LocalIotHandler {
     pub fn new(on_message: fn(topic: String, payload: String)) -> Self {
         Self {
-            mqtt_client: Arc::new(Mutex::new(MqttClient::new(
+            mqtt_client: Arc::new(Mutex::new(LocalIotClient::new(
                 "gateway".to_string(),
                 CONFIG.base.mqtt_host.clone(),
                 CONFIG.base.mqtt_port,
@@ -53,7 +53,7 @@ impl LocalIotClient {
     }
 
     async fn telemetry_loop(
-        mqtt_client: Arc<Mutex<MqttClient>>,
+        mqtt_client: Arc<Mutex<LocalIotClient>>,
         running: Arc<AtomicBool>,
     ) -> Result<()> {
         let vehicle = Vehicle::instance().await;

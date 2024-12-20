@@ -1,9 +1,9 @@
-use crate::monitor::service::{HealthReport, ServiceStatus};
+use crate::config::CFG;
+use crate::monitor::service::{HealthReport, ServiceStatus, Services};
 use crate::monitor::vehicle::VehicleState;
-use crate::{config::CONFIG, monitor::service::Services};
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 
-use luffy_common::mqtt::MqttClient;
+use luffy_common::iot::local::LocalIotClient;
 use luffy_common::util::glob_match;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -28,7 +28,7 @@ struct TelemetryData {
 pub struct MqttMonitor {
     pub services: Arc<RwLock<Services>>,
     pub vehicle: Arc<RwLock<VehicleState>>,
-    pub client: Arc<Mutex<MqttClient>>,
+    pub client: Arc<Mutex<LocalIotClient>>,
 }
 
 impl MqttMonitor {
@@ -40,12 +40,12 @@ impl MqttMonitor {
                 Arc::new(Self {
                     services: Arc::new(RwLock::new(Services::new())),
                     vehicle: Arc::new(RwLock::new(VehicleState::default())),
-                    client: Arc::new(Mutex::new(MqttClient::new(
+                    client: Arc::new(Mutex::new(LocalIotClient::new(
                         "launcher".to_string(),
-                        CONFIG.base.mqtt_host.to_string(),
-                        CONFIG.base.mqtt_port,
+                        CFG.base.mqtt_host.to_string(),
+                        CFG.base.mqtt_port,
                         None,
-                        CONFIG.base.health_report_interval,
+                        CFG.base.health_report_interval,
                         version.to_string(),
                     ))),
                 })

@@ -74,9 +74,185 @@
                 </div>
             </div>
         </div>
+
+        <!-- Add this after the dashboard-grid div -->
+        <div class="video-card">
+            <h2>Camera Feed</h2>
+            <div class="video-container">
+                <video id="videoStream" autoplay playsinline></video>
+            </div>
+            <div class="video-controls">
+                <select id="cameraSelect">
+                    <!-- Will be populated dynamically -->
+                </select>
+                <button id="startStream">Start Stream</button>
+                <button id="stopStream" disabled>Stop Stream</button>
+            </div>
+        </div>
     </div>
 
     <script>
+        let peerConnection = null;
+        let videoStream = null;
+        let ws = null;
+
+        function connectWebSocket() {
+            const mediaServerUrl = `ws://${window.location.hostname}:8081/ws`;
+            ws = new WebSocket(mediaServerUrl);
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'answer') {
+                    handleWebRTCAnswer(data);
+                } else if (data.type === 'candidate') {
+                    handleWebRTCCandidate(data);
+                } else if (data.type === 'error') {
+                    console.error('WebRTC error:', data.error);
+                    alert(`WebRTC error: ${data.error}`);
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                stopWebRTC();
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket closed, reconnecting...');
+                stopWebRTC();
+                setTimeout(connectWebSocket, 1000);
+            };
+        }
+
+        function handleWebRTCAnswer(data) {
+            if (peerConnection) {
+                const remoteDesc = new RTCSessionDescription({
+                    type: 'answer',
+                    sdp: data.answer
+                });
+                peerConnection.setRemoteDescription(remoteDesc)
+                    .catch(console.error);
+            }
+        }
+
+        function handleWebRTCCandidate(data) {
+            if (peerConnection) {
+                const candidate = new RTCIceCandidate({
+                    candidate: data.candidate,
+                    sdpMLineIndex: data.sdp_mline_index,
+                    sdpMid: data.sdp_mid
+                });
+                peerConnection.addIceCandidate(candidate)
+                    .catch(console.error);
+            }
+        }
+
+        async function setupWebRTC(cameraId) {
+            const videoElement = document.getElementById('videoStream');
+            const startButton = document.getElementById('startStream');
+            const stopButton = document.getElementById('stopStream');
+            // Generate request ID early
+            const requestId = Math.random().toString(36).substring(7);
+
+            try {
+                // Create WebRTC peer connection
+                const configuration = {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' }
+                    ]
+                };
+                peerConnection = new RTCPeerConnection(configuration);
+
+                // Set up event handlers
+                peerConnection.ontrack = (event) => {
+                    videoElement.srcObject = event.streams[0];
+                };
+
+                peerConnection.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        ws.send(JSON.stringify({
+                            type: 'candidate',
+                            camera_id: cameraSelect.value,
+                            request_id: requestId,
+                            candidate: event.candidate.candidate,
+                            sdp_mline_index: event.candidate.sdpMLineIndex
+                        }));
+                    }
+                };
+
+                // Create offer
+                const offer = await peerConnection.createOffer({
+                    offerToReceiveVideo: true,
+                    offerToReceiveAudio: false
+                });
+                await peerConnection.setLocalDescription(offer);
+
+                // Send offer via WebSocket instead of HTTP
+                ws.send(JSON.stringify({
+                    type: 'offer',
+                    camera_id: cameraId,
+                    request_id: requestId,
+                    offer: offer.sdp
+                }));
+
+                // Remove the fetch call and wait for answer via WebSocket
+
+                // Update button states
+                startButton.disabled = true;
+                stopButton.disabled = false;
+
+            } catch (error) {
+                console.error('WebRTC setup failed:', error);
+                alert('Failed to start video stream');
+            }
+        }
+
+        function stopWebRTC() {
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            const videoElement = document.getElementById('videoStream');
+            if (videoElement.srcObject) {
+                videoElement.srcObject.getTracks().forEach(track => track.stop());
+                videoElement.srcObject = null;
+            }
+            document.getElementById('startStream').disabled = false;
+            document.getElementById('stopStream').disabled = true;
+        }
+
+        // Set up event listeners
+        document.getElementById('startStream').addEventListener('click', () => {
+            const cameraSelect = document.getElementById('cameraSelect');
+            setupWebRTC(cameraSelect.value);
+        });
+
+        document.getElementById('stopStream').addEventListener('click', stopWebRTC);
+
+        // Update camera select when services update
+        function updateCameraSelect(services) {
+            const mediaService = services.find(s => s.name === 'media');
+            if (mediaService && mediaService.status === 'Running') {
+                // TODO: Get actual camera list from API
+                const cameraSelect = document.getElementById('cameraSelect');
+                cameraSelect.innerHTML = `
+                    <option value="camera1">Camera 1</option>
+                    <option value="camera2">Camera 2</option>
+                `;
+                document.getElementById('startStream').disabled = false;
+            } else {
+                document.getElementById('startStream').disabled = true;
+                document.getElementById('cameraSelect').innerHTML = '<option>No cameras available</option>';
+            }
+        }
+
+        // Update the existing updateUI function to include camera select update
+        const originalUpdateUI = window.updateUI;
+        window.updateUI = function (data) {
+            originalUpdateUI(data);
+            updateCameraSelect(data.services);
+        };
+
         // Auto-refresh status every second
         setInterval(async () => {
             try {
@@ -166,6 +342,9 @@
                 }
             }
         });
+
+        // Connect WebSocket when page loads
+        connectWebSocket();
     </script>
 </body>
 

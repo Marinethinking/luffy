@@ -29,6 +29,20 @@
                 "RUST_ENV": "dev"
             },
             "sourceLanguages": ["rust"]
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Media",
+            "program": "${workspaceFolder}/target/debug/luffy-media",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "cargo build",
+            "env": {
+                "RUST_LOG": "debug",
+                "RUST_ENV": "dev"
+            },
+            "sourceLanguages": ["rust"]
         }
     ]
 }

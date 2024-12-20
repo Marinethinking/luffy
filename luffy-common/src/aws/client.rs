@@ -2,16 +2,12 @@ use anyhow::{Context, Result};
 use aws_config::{meta::region::RegionProviderChain, BehaviorVersion, Region};
 use aws_sdk_lambda::{primitives::Blob, Client as LambdaClient};
 use aws_sdk_s3::Client as S3Client;
-use luffy_common::util;
-
-use crate::config::CONFIG;
-
 use serde::Deserialize;
-
 use std::fs;
-
 use tokio::sync::OnceCell;
 use tracing::info;
+
+use crate::config::BaseConfig;
 
 static AWS_CLIENT: OnceCell<AwsClient> = OnceCell::const_new();
 
@@ -23,19 +19,19 @@ pub struct AwsClient {
 #[derive(Debug, Deserialize)]
 pub struct IotCredentials {
     #[serde(rename = "certificateArn")]
-    certificate_arn: String,
+    pub certificate_arn: String,
     #[serde(rename = "certificatePem")]
-    certificate_pem: String,
+    pub certificate_pem: String,
     #[serde(rename = "privateKey")]
-    private_key: String,
+    pub private_key: String,
 }
 
 impl AwsClient {
     pub async fn get_aws_config() -> Result<aws_config::SdkConfig> {
-        let region = &CONFIG.base.aws.region;
+        let region = Region::new("ca-central-1");
 
         let config = aws_config::defaults(BehaviorVersion::latest())
-            .region(RegionProviderChain::first_try(Region::new(region)))
+            .region(RegionProviderChain::first_try(region))
             .load()
             .await;
         Ok(config)
@@ -73,7 +69,7 @@ impl AwsClient {
 
     pub async fn register_device(&self) -> Result<IotCredentials> {
         info!("Registering device...");
-        let vehicle_id = util::get_vehicle_id(&CONFIG.base);
+        let vehicle_id = "luffy-dev"; // TODO: Get from config
 
         let payload = serde_json::json!({
             "typeName": "Query",
@@ -84,14 +80,10 @@ impl AwsClient {
             }
         });
 
-        let lambda_name = &CONFIG.base.aws.lambda.register;
+        let lambda_name = "arn:aws:lambda:ca-central-1:583818069008:function:amplify-d34e88yymcb7ax-de-registerIotThinglambdaCE-j14AZkH1hKNp";
         let response = self
             .invoke_lambda(lambda_name.to_string(), payload.to_string())
             .await?;
-
-        // Print raw response as string
-        let raw_response = String::from_utf8_lossy(response.as_ref());
-        info!("Raw Lambda response: {}", raw_response);
 
         let credentials: IotCredentials = serde_json::from_slice(response.as_ref())
             .context("Failed to deserialize Lambda response")?;
@@ -118,7 +110,6 @@ impl AwsClient {
 
         fs::create_dir_all(&config_dir)?;
 
-        // Save certificate and private key to files
         fs::write(
             config_dir.join("certificate.pem"),
             &credentials.certificate_pem,
@@ -135,16 +126,13 @@ impl AwsClient {
     fn save_credentials_deb(&self, credentials: &IotCredentials) -> Result<()> {
         let config_dir = std::path::PathBuf::from("/etc/luffy");
 
-        // Create directory with proper permissions (readable by owner and group)
         if !config_dir.exists() {
             fs::create_dir_all(&config_dir).context("Failed to create config directory")?;
-            // Set directory permissions to 755 (rwxr-xr-x)
             let mut perms = fs::metadata(&config_dir)?.permissions();
             std::os::unix::fs::PermissionsExt::set_mode(&mut perms, 0o755);
             fs::set_permissions(&config_dir, perms)?;
         }
 
-        // Save certificate and private key to files with restricted permissions
         for (filename, content) in [
             ("certificate.pem", &credentials.certificate_pem),
             ("private.key", &credentials.private_key),
@@ -152,7 +140,6 @@ impl AwsClient {
         ] {
             let path = config_dir.join(filename);
             fs::write(&path, content).with_context(|| format!("Failed to write {}", filename))?;
-            // Set file permissions to 640 (rw-r-----)
             let mut perms = fs::metadata(&path)?.permissions();
             std::os::unix::fs::PermissionsExt::set_mode(&mut perms, 0o640);
             fs::set_permissions(&path, perms)?;

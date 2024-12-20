@@ -5,6 +5,11 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
+aws-config.workspace = true
+aws-sdk-dynamodb.workspace = true
+aws-sdk-lambda.workspace = true
+aws-sdk-s3.workspace = true
+
 config.workspace = true
 tokio.workspace = true
 serde.workspace = true
@@ -18,8 +23,11 @@ glob.workspace = true
 strum.workspace = true
 strum_macros.workspace = true
  
+derivative = "2.2"
+dirs = "5.0"
 futures = "0.3"
 network-interface = "2.0"
 uuid = { version = "1.11", features = ["v4"] }
 reqwest = { version = "0.12", features = ["json"] }
+rustls-pemfile = "2.2"
 semver = "1.0"

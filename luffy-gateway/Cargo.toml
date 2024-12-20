@@ -6,7 +6,7 @@ edition.workspace = true
 
 [dependencies]
 luffy-common = { path = "../luffy-common" }
-
+axum.workspace = true
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -23,12 +23,12 @@ aws-config = {version = "1.5", features = ["rustls"]}
 aws-sdk-dynamodb = {version = "1.54", features = ["rustls"]}
 aws-sdk-lambda = {version = "1.59", features = ["rustls"]}
 aws-sdk-s3 = {version = "1.63.0", features = ["rustls"]}
-axum = "0.7"
+ 
 
 dirs = "5.0"
 mavlink = "0.13"
 num-traits = "0.2"
-once_cell = "1.20"
+ 
 rumqttd = {version = "0.19", features = ["use-rustls"]}
 rustls-pemfile = "2.2"
 tower-http = { version = "0.6", features = ["full"] }

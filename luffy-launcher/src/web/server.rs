@@ -9,8 +9,9 @@ use std::{
 use axum::Router;
 use tower_http::services::ServeDir;
 
+use crate::config::CFG;
+
 use super::index_page;
-use crate::config::CONFIG;
 
 use anyhow::{Context, Result};
 
@@ -53,8 +54,8 @@ impl WebServer {
             .merge(index_page::routes().await)
             .nest_service("/static", ServeDir::new(&static_dir));
 
-        let host = CONFIG.web.host.clone();
-        let port = CONFIG.web.port;
+        let host = CFG.web.host.clone();
+        let port = CFG.web.port;
 
         let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
         axum::serve(listener, app).await?;

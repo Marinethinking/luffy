@@ -1,0 +1,21 @@
+# Logging
+log_level = "debug"
+
+# WebSocket
+websocket_port = 8081
+
+
+# Camera Configurations
+[[cameras]]
+id = "camera1"
+name = "Main Deck Camera"
+rtsp_url = "rtsp://192.168.20.198:8554/camera1"
+ 
+
+[[cameras]]
+id = "camera2"
+name = "Engine Room Camera"
+rtsp_url = "rtsp://192.168.20.198:8554/camera1"
+ 
+ 
+

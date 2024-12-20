@@ -1,4 +1,16 @@
 vehicle_id = "luffy-dev"
 mqtt_host = "127.0.0.1"
 mqtt_port = 9183
-health_report_interval = 60
+health_report_interval = 10
+
+[aws]
+region = "ca-central-1"
+
+[aws.iot]
+root_ca_path = "certs/AmazonRootCA.pem"
+endpoint = "a1w2o8b6t3ahv7-ats.iot.ca-central-1.amazonaws.com"
+port = 8883
+
+[aws.lambda]
+register = "arn:aws:lambda:ca-central-1:583818069008:function:amplify-d34e88yymcb7ax-de-registerIotThinglambdaCE-j14AZkH1hKNp"
+
