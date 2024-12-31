@@ -1,8 +1,8 @@
-use std::cmp::min;
-use std::sync::Arc;
 use anyhow::Result;
 use rumqttc::{AsyncClient, Event, Packet, QoS};
 use serde_json::json;
+use std::cmp::min;
+use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
@@ -19,6 +19,7 @@ pub struct LocalIotClient {
     health_report_interval: u64,
     version: String,
     subscriptions: Arc<Mutex<Vec<String>>>,
+    log_on: bool,
 }
 
 impl Default for LocalIotClient {
@@ -33,6 +34,7 @@ impl Default for LocalIotClient {
             health_report_interval: 60,
             version: env!("CARGO_PKG_VERSION").to_string(),
             subscriptions: Arc::new(Mutex::new(Vec::new())),
+            log_on: false,
         }
     }
 }
@@ -56,7 +58,12 @@ impl LocalIotClient {
             health_report_interval,
             version,
             subscriptions: Arc::new(Mutex::new(Vec::new())),
+            log_on: false,
         }
+    }
+
+    pub fn set_log_on(&mut self, log_on: bool) {
+        self.log_on = log_on;
     }
 
     pub async fn publish(&self, topic: &str, payload: &str) -> Result<()> {
@@ -103,7 +110,7 @@ impl LocalIotClient {
         let on_message = self.on_message;
         let name = self.name.clone();
         let subscriptions = self.subscriptions.clone();
-
+        let log_on = self.log_on;
         // Spawn the connection handling task
         let connection_handle = tokio::spawn(async move {
             info!("🚀 Starting broker connection event loop for {}", name);
@@ -131,11 +138,14 @@ impl LocalIotClient {
                         }
                     }
                     Ok(Event::Incoming(Packet::Publish(p))) => {
-                        debug!(
-                            "📨 Received message - Topic: {}, Payload: {:?}",
-                            p.topic,
-                            String::from_utf8_lossy(&p.payload)
-                        );
+                        if log_on {
+                            debug!(
+                                "📨 Received message - Topic: {}, Payload: {:?}",
+                                p.topic,
+                                String::from_utf8_lossy(&p.payload)
+                            );
+                        }
+
                         if let Some(callback) = on_message {
                             callback(p.topic, String::from_utf8_lossy(&p.payload).to_string());
                         } else {
@@ -143,7 +153,9 @@ impl LocalIotClient {
                         }
                     }
                     Ok(event) => {
-                        debug!("📝 Other MQTT event received: {:?}", event);
+                        if log_on {
+                            debug!("📝 Other MQTT event received: {:?}", event);
+                        }
                     }
                     Err(e) => {
                         error!("❌ Connection error: {:?}", e);
@@ -185,9 +197,14 @@ impl LocalIotClient {
                     // Spawn health report task
                     tokio::spawn(async move {
                         info!("🏥 Starting health report task for {}", name);
-                        if let Err(e) =
-                            Self::health_report_task(client, name, interval, health_report_payload)
-                                .await
+                        if let Err(e) = Self::health_report_task(
+                            client,
+                            name,
+                            interval,
+                            health_report_payload,
+                            log_on,
+                        )
+                        .await
                         {
                             error!("❌ Health report task failed: {:?}", e);
                         }
@@ -215,13 +232,16 @@ impl LocalIotClient {
         name: String,
         interval: u64,
         health_report_payload: String,
+        log_on: bool,
     ) -> Result<()> {
         info!("🏥 Health report task started for {}", name);
         let mut interval = tokio::time::interval(Duration::from_secs(interval));
         loop {
             interval.tick().await;
             if let Some(client) = &client {
-                info!("📤 Sending health report for {}", name);
+                if log_on {
+                    debug!("📤 Sending health report for {}", name);
+                }
                 match client
                     .publish(
                         &format!("luffy/{}/health", name),
@@ -231,8 +251,16 @@ impl LocalIotClient {
                     )
                     .await
                 {
-                    Ok(_) => debug!("Health report sent successfully"),
-                    Err(e) => error!("Failed to send health report: {:?}", e),
+                    Ok(_) => {
+                        if log_on {
+                            debug!("Health report sent successfully");
+                        }
+                    }
+                    Err(e) => {
+                        if log_on {
+                            error!("Failed to send health report: {:?}", e);
+                        }
+                    }
                 }
             }
         }
@@ -241,4 +269,4 @@ impl LocalIotClient {
     pub fn set_on_message(&mut self, on_message: fn(topic: String, payload: String)) {
         self.on_message = Some(on_message);
     }
-} 
+}

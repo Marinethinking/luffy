@@ -6,18 +6,24 @@ use retina::client::{Demuxed, PlayOptions, Playing};
 use retina::client::{Session, SessionOptions, SetupOptions};
 use retina::codec::{CodecItem, VideoFrame};
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tokio::sync::Mutex;
-use tracing::{debug, error};
-use url::Url;
+use tracing::{debug, error, info};
+
 use webrtc::api::APIBuilder;
+use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 use webrtc::ice_transport::ice_connection_state::RTCIceConnectionState;
 use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
 use webrtc::peer_connection::RTCPeerConnection;
+use webrtc::rtp_transceiver::rtp_codec::{RTCRtpCodecParameters, RTPCodecType};
+use webrtc::rtp_transceiver::rtp_transceiver_direction::RTCRtpTransceiverDirection;
+use webrtc::rtp_transceiver::RTCPFeedback;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
+use webrtc::track::track_local::TrackLocal;
 use webrtc::{
     api::media_engine::MediaEngine,
     ice_transport::ice_server::RTCIceServer,
@@ -28,12 +34,15 @@ use webrtc::{
     rtp_transceiver::rtp_codec::RTCRtpCodecCapability,
 };
 
+use super::service::WebRTCRequest;
+
 #[derive(Clone)]
 pub struct Camera {
     config: CameraConfig,
     pub running: Arc<AtomicBool>,
-    pub frame_sender: broadcast::Sender<Vec<u8>>,
     pub peer_connections: Arc<Mutex<HashMap<String, Arc<RTCPeerConnection>>>>,
+    pending_candidates: Arc<Mutex<HashMap<String, VecDeque<(String, u32)>>>>,
+    video_tracks: Arc<Mutex<Vec<Arc<TrackLocalStaticSample>>>>,
 }
 
 impl fmt::Debug for Camera {
@@ -52,63 +61,45 @@ impl Camera {
     }
 
     pub async fn new(config: CameraConfig) -> Result<Self> {
-        let (frame_sender, _) = broadcast::channel(30); // Buffer size of 30 frames
         Ok(Self {
             config,
             running: Arc::new(AtomicBool::new(false)),
-            frame_sender,
             peer_connections: Arc::new(Mutex::new(HashMap::new())),
+            pending_candidates: Arc::new(Mutex::new(HashMap::new())),
+            video_tracks: Arc::new(Mutex::new(Vec::new())),
         })
     }
 
     pub async fn start(&self) -> Result<()> {
-        if self.running.load(Ordering::SeqCst) {
-            return Ok(());
-        }
+        self.running.store(true, Ordering::SeqCst);
 
-        let mut session = Session::describe(
-            Url::parse(&self.config.url)?,
-            SessionOptions::default().user_agent("luffy-media".to_owned()),
-        )
-        .await?;
-
-        let video = session
-            .streams()
-            .iter()
-            .position(|s| s.media() == "video")
-            .ok_or_else(|| anyhow::anyhow!("No video track found"))?;
-        session.setup(video, SetupOptions::default()).await?;
-        let session = session.play(PlayOptions::default()).await?;
-
-        let mut frames = session.demuxed()?;
-
-        let sender = self.frame_sender.clone();
+        let camera_id = self.id().to_string();
+        let url = self.config.url.clone();
         let running = self.running.clone();
+        let video_tracks = self.video_tracks.clone();
 
-        // Single task reading from RTSP and broadcasting to all peers
         tokio::spawn(async move {
             while running.load(Ordering::SeqCst) {
-                match frames.next().await {
-                    Some(Ok(CodecItem::VideoFrame(frame))) => {
-                        if let Ok(data) = Self::convert_h264(frame) {
-                            let _ = sender.send(data); // Send raw frame data
+                match Self::setup_rtsp_stream(&camera_id, &url, video_tracks.clone()).await {
+                    Ok(_) => {
+                        while running.load(Ordering::SeqCst) {
+                            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                         }
                     }
-                    Some(Err(e)) => {
-                        error!("Error reading RTSP frame: {}", e);
-                        continue;
+                    Err(e) => {
+                        error!("Failed to connect to RTSP stream: {}. Retrying in 5s", e);
+                        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     }
-                    _ => continue,
                 }
             }
         });
 
-        self.running.store(true, Ordering::SeqCst);
         Ok(())
     }
 
     /// Converts from AVC representation to the Annex B representation expected by webrtc-rs.
     fn convert_h264(frame: VideoFrame) -> Result<Vec<u8>> {
+        // Convert from AVC to Annex B format
         let mut data = frame.into_data();
         let mut i = 0;
         while i < data.len() - 3 {
@@ -174,72 +165,201 @@ impl Camera {
         Ok(())
     }
 
+    async fn setup_rtsp_stream(
+        camera_id: &str,
+        url: &str,
+        video_tracks: Arc<Mutex<Vec<Arc<TrackLocalStaticSample>>>>,
+    ) -> Result<()> {
+        let mut session = Session::describe(url.parse()?, SessionOptions::default()).await?;
+        let video = session
+            .streams()
+            .iter()
+            .position(|s| s.media() == "video")
+            .ok_or_else(|| anyhow::anyhow!("No video track found"))?;
+
+        // Get H264 parameters from the stream
+        let stream = &session.streams()[video];
+        let extra_data = stream
+            .parameters()
+            .ok_or_else(|| anyhow::anyhow!("No H264 parameters found"))?;
+
+        session.setup(video, SetupOptions::default()).await?;
+        let session = session.play(PlayOptions::default()).await?;
+        let mut frames = session.demuxed()?;
+
+        // Send H264 parameters first
+        let tracks = video_tracks.lock().await;
+        if !tracks.is_empty() {
+            let sample = Sample {
+                data: vec![
+                    0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1f, 0x96, 0x54, 0x0b, 0x24, 0x00,
+                    0x00, 0x00, 0x01, 0x68, 0xce, 0x38, 0x80,
+                ]
+                .into(),
+                duration: std::time::Duration::from_secs(1) / 30,
+                timestamp: std::time::SystemTime::now(),
+                packet_timestamp: 0,
+                prev_dropped_packets: 0,
+                prev_padding_packets: 0,
+            };
+
+            for track in tracks.iter() {
+                track.write_sample(&sample).await?;
+            }
+        }
+        drop(tracks);
+
+        while let Some(frame) = frames.next().await {
+            match frame {
+                Ok(CodecItem::VideoFrame(video_frame)) => {
+                    let frame_data = Self::convert_h264(video_frame)?;
+
+                    let sample = Sample {
+                        data: frame_data.into(),
+                        duration: std::time::Duration::from_secs(1) / 30,
+                        timestamp: std::time::SystemTime::now(),
+                        packet_timestamp: 0,
+                        prev_dropped_packets: 0,
+                        prev_padding_packets: 0,
+                    };
+
+                    // Hold lock while writing to all tracks
+                    let tracks = video_tracks.lock().await;
+                    if !tracks.is_empty() {
+                        for track in tracks.iter() {
+                            if let Err(e) = track.write_sample(&sample).await {
+                                error!("Failed to write sample: {}", e);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("Error receiving frame: {}", e);
+                    break;
+                }
+                _ => continue,
+            }
+        }
+        Ok(())
+    }
+
     pub async fn handle_offer(&self, request_id: String, offer: String) -> Result<()> {
+        info!("Handling offer for camera {}", self.id());
         if !self.running.load(Ordering::SeqCst) {
             bail!("Camera is not running");
         }
 
-        self.add_peer(&request_id).await?;
+        debug!("Creating peer connection for {}", request_id);
+        let peer_connection = {
+            let mut media_engine = MediaEngine::default();
+            media_engine.register_default_codecs()?;
 
-        let peer_connection = self
-            .peer_connections
+            let api = APIBuilder::new().with_media_engine(media_engine).build();
+
+            let config = RTCConfiguration {
+                ice_servers: vec![
+                    RTCIceServer {
+                        urls: vec!["stun:stun1.l.google.com:19302".to_owned()],
+                        ..Default::default()
+                    },
+                    RTCIceServer {
+                        urls: vec!["stun:stun2.l.google.com:19302".to_owned()],
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            };
+
+            Arc::new(api.new_peer_connection(config).await?)
+        };
+
+        // Store peer connection before setting descriptions
+        self.peer_connections
             .lock()
             .await
-            .get(&request_id)
-            .ok_or_else(|| anyhow::anyhow!("Peer connection not found"))?
-            .clone();
+            .insert(request_id.clone(), peer_connection.clone());
 
-        // Create and add track
-        let track = Arc::new(TrackLocalStaticSample::new(
+        // Create video track
+        let video_track = Arc::new(TrackLocalStaticSample::new(
             RTCRtpCodecCapability {
                 mime_type: "video/H264".to_owned(),
                 clock_rate: 90000,
                 channels: 0,
                 sdp_fmtp_line:
-                    "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f"
+                    "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42001f"
                         .to_owned(),
-                ..Default::default()
+                rtcp_feedback: vec![
+                    RTCPFeedback {
+                        typ: "nack".to_owned(),
+                        parameter: "".to_owned(),
+                    },
+                    RTCPFeedback {
+                        typ: "nack".to_owned(),
+                        parameter: "pli".to_owned(),
+                    },
+                    RTCPFeedback {
+                        typ: "ccm".to_owned(),
+                        parameter: "fir".to_owned(),
+                    },
+                ],
             },
-            "video".to_owned(),
-            "luffy-media".to_owned(),
+            format!("video-{}", self.id()),
+            format!("webrtc-rs"),
         ));
 
-        peer_connection.add_track(track.clone()).await?;
+        // Add track to peer connection first
+        peer_connection.add_track(video_track.clone()).await?;
 
-        let mut receiver = self.frame_sender.subscribe();
-        let running = self.running.clone();
+        // Add track to broadcast list
+        self.video_tracks.lock().await.push(video_track.clone());
 
-        // Each peer gets its own receiver
-        tokio::spawn(async move {
-            while running.load(Ordering::SeqCst) {
-                match receiver.recv().await {
-                    Ok(data) => {
-                        // Directly receive frame data
-                        if let Err(e) = track
-                            .write_sample(&Sample {
-                                data: data.into(),
-                                duration: std::time::Duration::from_secs(1),
-                                ..Default::default()
-                            })
-                            .await
-                        {
-                            error!("Failed to send RTP packet: {}", e);
-                        }
-                    }
-                    Err(e) => error!("Broadcast receive error: {}", e),
-                }
-            }
-        });
+        // Handle ICE connection state changes
+        let request_id_clone = request_id.clone();
+        peer_connection.on_ice_connection_state_change(Box::new(
+            move |state: RTCIceConnectionState| {
+                debug!(
+                    "ICE connection state changed for {}: {:?}",
+                    request_id_clone, state
+                );
+                Box::pin(async {})
+            },
+        ));
 
-        // Handle WebRTC setup
+        // Handle connection state changes
+        let request_id_clone = request_id.clone();
+        peer_connection.on_peer_connection_state_change(Box::new(
+            move |state: RTCPeerConnectionState| {
+                debug!(
+                    "Peer connection state changed for {}: {:?}",
+                    request_id_clone, state
+                );
+                Box::pin(async {})
+            },
+        ));
+
+        debug!("Setting remote description for peer {}", request_id);
         let offer = RTCSessionDescription::offer(offer)?;
         peer_connection.set_remote_description(offer).await?;
+
+        debug!("Creating answer for peer {}", request_id);
         let answer = peer_connection.create_answer(None).await?;
+
+        debug!("Setting local description for peer {}", request_id);
         peer_connection
             .set_local_description(answer.clone())
             .await?;
 
-        // Send answer
+        // Process any pending candidates
+        let mut pending = self.pending_candidates.lock().await;
+        if let Some(candidates) = pending.remove(&request_id) {
+            for (candidate, sdp_mline_index) in candidates {
+                debug!("Processing pending ICE candidate for peer {}", request_id);
+                self.add_ice_candidate_internal(&peer_connection, candidate, sdp_mline_index)
+                    .await?;
+            }
+        }
+
+        // Send answer using the WebSocket connection ID
         let response = serde_json::json!({
             "type": "answer",
             "request_id": request_id,
@@ -247,49 +367,11 @@ impl Camera {
             "answer": answer.sdp,
         });
 
+        // Send the response through WS_SERVER
+        debug!("Sending answer for request {}", request_id);
         WS_SERVER
             .send_message(&request_id, &response.to_string())
             .await?;
-
-        // Handle peer connection state changes
-        let request_id_state = request_id.clone();
-        let camera_self = self.clone();
-        peer_connection.on_peer_connection_state_change(Box::new(
-            move |s: RTCPeerConnectionState| {
-                let request_id = request_id_state.clone();
-                let camera = camera_self.clone();
-                Box::pin(async move {
-                    match s {
-                        RTCPeerConnectionState::Failed | RTCPeerConnectionState::Closed => {
-                            if let Err(e) = camera.remove_peer(&request_id).await {
-                                error!("Error removing peer {}: {}", request_id, e);
-                            }
-                        }
-                        _ => (),
-                    }
-                })
-            },
-        ));
-
-        // Handle ICE connection state changes
-        let request_id_ice = request_id.clone();
-        let camera_self = self.clone();
-        peer_connection.on_ice_connection_state_change(Box::new(
-            move |s: RTCIceConnectionState| {
-                let request_id = request_id_ice.clone();
-                let camera = camera_self.clone();
-                Box::pin(async move {
-                    match s {
-                        RTCIceConnectionState::Disconnected | RTCIceConnectionState::Failed => {
-                            if let Err(e) = camera.remove_peer(&request_id).await {
-                                error!("Error removing peer {}: {}", request_id, e);
-                            }
-                        }
-                        _ => (),
-                    }
-                })
-            },
-        ));
 
         Ok(())
     }
@@ -300,22 +382,61 @@ impl Camera {
         candidate: String,
         sdp_mline_index: u32,
     ) -> Result<()> {
-        let peer = self
-            .peer_connections
-            .lock()
-            .await
-            .get(&request_id)
-            .ok_or_else(|| anyhow::anyhow!("Peer connection not found"))?
-            .clone();
+        debug!(
+            "Adding ICE candidate for peer {}: {} (mline: {})",
+            request_id, candidate, sdp_mline_index
+        );
 
-        peer.add_ice_candidate(webrtc::ice_transport::ice_candidate::RTCIceCandidateInit {
+        let peer = {
+            let peers = self.peer_connections.lock().await;
+            match peers.get(&request_id) {
+                Some(p) => p.clone(),
+                None => {
+                    // Queue the candidate if peer isn't ready
+                    let mut pending = self.pending_candidates.lock().await;
+                    pending
+                        .entry(request_id.clone())
+                        .or_insert_with(VecDeque::new)
+                        .push_back((candidate, sdp_mline_index));
+                    debug!("Queued ICE candidate for peer {}", request_id);
+                    return Ok(());
+                }
+            }
+        };
+
+        if peer.remote_description().await.is_none() {
+            // Queue the candidate if remote description isn't set
+            let mut pending = self.pending_candidates.lock().await;
+            pending
+                .entry(request_id.clone())
+                .or_insert_with(VecDeque::new)
+                .push_back((candidate, sdp_mline_index));
+            debug!(
+                "Queued ICE candidate for peer {} (waiting for remote description)",
+                request_id
+            );
+            return Ok(());
+        }
+
+        self.add_ice_candidate_internal(&peer, candidate, sdp_mline_index)
+            .await
+    }
+
+    async fn add_ice_candidate_internal(
+        &self,
+        peer: &RTCPeerConnection,
+        candidate: String,
+        sdp_mline_index: u32,
+    ) -> Result<()> {
+        let candidate_init = webrtc::ice_transport::ice_candidate::RTCIceCandidateInit {
             candidate,
             sdp_mid: None,
             sdp_mline_index: Some(sdp_mline_index as u16),
             username_fragment: None,
-        })
-        .await?;
+        };
 
+        peer.add_ice_candidate(candidate_init).await?;
+        debug!("Successfully added ICE candidate");
         Ok(())
     }
 }

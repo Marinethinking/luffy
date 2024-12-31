@@ -2,32 +2,30 @@
 
 Luffy Media is a media server that can receive and process media streams from various sources.
 
-## Dependencies
 
-- install gstreamer
-
-```bash
-export LIBRARY_PATH="/opt/homebrew/lib:$LIBRARY_PATH"
-source ~/.zshrc
-cargo build
-```
 
 
 ## Development
 
-### install gstreamer
+### Stream Mac camera to rtsp by media mtx
 
-### test gst
+1. brew install mediamtx
+2. crate a config file on you ~/.mediamtx.yml with the following content:
+
+```yaml
+paths:
+  camera1:
+    source: publisher
+```
+
+3.  forwad you camera by ffmpeg:
 
 ```bash
-gst-launch-1.0 rtspsrc location=rtsp://192.168.20.198:8554/camera1 ! \
-    rtph264depay ! \
-    h264parse ! \
-    avdec_h264 ! \
-    videoconvert ! \
-    autovideosink
+ffmpeg -f avfoundation -framerate 30 -video_size 1280x720 -pix_fmt uyvy422 -i "0:none" \
+  -vf format=nv12 \
+  -c:v h264_videotoolbox \
+  -b:v 2000k \
+  -f rtsp \
+  -rtsp_transport tcp \
+  rtsp://localhost:8554/camera1
 ```
-gst-launch-1.0 rtspsrc location=rtsp://192.168.20.198:8554/camera1 latency=0 ! \
-rtph264depay ! h264parse ! \
-webrtcbin bundle-policy=max-bundle name=webrtcbin \
-webrtcbin. ! fakesink

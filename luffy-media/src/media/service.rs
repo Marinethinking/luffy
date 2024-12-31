@@ -149,3 +149,12 @@ impl MediaService {
         Ok(())
     }
 }
+
+impl WebRTCRequest {
+    pub fn request_id(&self) -> &str {
+        match self {
+            WebRTCRequest::Offer { request_id, .. } => request_id,
+            WebRTCRequest::Candidate { request_id, .. } => request_id,
+        }
+    }
+}

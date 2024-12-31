@@ -12,6 +12,25 @@
     <link rel="icon" type="image/png" sizes="512x512" href="/static/favicon_io/android-chrome-512x512.png">
     <link rel="apple-touch-icon" href="/static/favicon_io/apple-touch-icon.png">
     <link rel="manifest" href="/static/favicon_io/site.webmanifest">
+    <style>
+        .video-container {
+            width: 100%;
+            min-height: 480px;
+            background: #000;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #videoStream {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: #000;
+            max-height: 720px;
+        }
+    </style>
 </head>
 
 <body>
@@ -79,7 +98,7 @@
         <div class="video-card">
             <h2>Camera Feed</h2>
             <div class="video-container">
-                <video id="videoStream" autoplay playsinline></video>
+                <video id="videoStream" autoplay playsinline muted></video>
             </div>
             <div class="video-controls">
                 <select id="cameraSelect">
@@ -95,6 +114,7 @@
         let peerConnection = null;
         let videoStream = null;
         let ws = null;
+        let connectionId = null;
 
         function connectWebSocket() {
             const mediaServerUrl = `ws://${window.location.hostname}:8081/ws`;
@@ -102,7 +122,10 @@
 
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                if (data.type === 'answer') {
+                if (data.type === 'connection_id') {
+                    connectionId = data.connection_id;
+                    console.log('Received connection ID:', connectionId);
+                } else if (data.type === 'answer') {
                     handleWebRTCAnswer(data);
                 } else if (data.type === 'candidate') {
                     handleWebRTCCandidate(data);
@@ -125,13 +148,22 @@
         }
 
         function handleWebRTCAnswer(data) {
-            if (peerConnection) {
+            console.log("Received answer:", data);
+            if (!peerConnection) {
+                console.error("No peer connection available");
+                return;
+            }
+
+            try {
                 const remoteDesc = new RTCSessionDescription({
                     type: 'answer',
                     sdp: data.answer
                 });
                 peerConnection.setRemoteDescription(remoteDesc)
-                    .catch(console.error);
+                    .then(() => console.log("Remote description set successfully"))
+                    .catch(error => console.error("Error setting remote description:", error));
+            } catch (error) {
+                console.error("Error handling WebRTC answer:", error);
             }
         }
 
@@ -151,58 +183,145 @@
             const videoElement = document.getElementById('videoStream');
             const startButton = document.getElementById('startStream');
             const stopButton = document.getElementById('stopStream');
-            // Generate request ID early
-            const requestId = Math.random().toString(36).substring(7);
+            if (!connectionId) {
+                console.error('No connection ID available');
+                alert('WebSocket connection not ready');
+                return;
+            }
 
             try {
-                // Create WebRTC peer connection
+                // Create peer connection
                 const configuration = {
                     iceServers: [
-                        { urls: 'stun:stun.l.google.com:19302' }
+                        { urls: 'stun:stun1.l.google.com:19302' },
+                        { urls: 'stun:stun2.l.google.com:19302' }
                     ]
                 };
-                peerConnection = new RTCPeerConnection(configuration);
 
-                // Set up event handlers
-                peerConnection.ontrack = (event) => {
-                    videoElement.srcObject = event.streams[0];
-                };
+                try {
+                    peerConnection = new RTCPeerConnection(configuration);
 
-                peerConnection.onicecandidate = (event) => {
-                    if (event.candidate) {
-                        ws.send(JSON.stringify({
-                            type: 'candidate',
-                            camera_id: cameraSelect.value,
-                            request_id: requestId,
-                            candidate: event.candidate.candidate,
-                            sdp_mline_index: event.candidate.sdpMLineIndex
-                        }));
-                    }
-                };
+                    // Add ICE candidate handler
+                    peerConnection.onicecandidate = (event) => {
+                        if (event.candidate) {
+                            console.log('Generated ICE candidate:', event.candidate);
+                            const msg = {
+                                type: 'candidate',
+                                camera_id: cameraId,
+                                request_id: connectionId,
+                                candidate: event.candidate.candidate,
+                                sdp_mline_index: event.candidate.sdpMLineIndex
+                            };
+                            ws.send(JSON.stringify(msg));
+                        }
+                    };
 
-                // Create offer
-                const offer = await peerConnection.createOffer({
-                    offerToReceiveVideo: true,
-                    offerToReceiveAudio: false
-                });
-                await peerConnection.setLocalDescription(offer);
+                    // Set up video transceiver with specific codec preferences
+                    const transceiver = peerConnection.addTransceiver('video', {
+                        direction: 'recvonly',
+                        codecs: [
+                            {
+                                mimeType: 'video/H264',
+                                clockRate: 90000,
+                                sdpFmtpLine: 'level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f'
+                            }
+                        ]
+                    });
 
-                // Send offer via WebSocket instead of HTTP
-                ws.send(JSON.stringify({
-                    type: 'offer',
-                    camera_id: cameraId,
-                    request_id: requestId,
-                    offer: offer.sdp
-                }));
+                    // Request keyframe when track is received
+                    let keyframeRequested = false;
 
-                // Remove the fetch call and wait for answer via WebSocket
+                    // Set up media element events first
+                    videoElement.playsInline = true;
+                    videoElement.muted = true;
+                    videoElement.autoplay = true;
+                    videoElement.controls = true;
 
-                // Update button states
-                startButton.disabled = true;
-                stopButton.disabled = false;
+                    // Set up event handlers
+                    peerConnection.ontrack = (event) => {
+                        console.log('Received track:', event.track);
+                        if (event.track.kind === 'video') {
+                            console.log('Setting video track');
+                            if (event.streams && event.streams[0]) {
+                                console.log('Got stream:', event.streams[0].id);
+                                videoElement.srcObject = event.streams[0];
+
+                                // Add more detailed track info logging
+                                console.log('Track settings:', event.track.getSettings());
+                                console.log('Track constraints:', event.track.getConstraints());
+
+                                // Force play when track is added
+                                videoElement.play().catch(e => {
+                                    console.error('Play failed:', e);
+                                    // Try again with user interaction
+                                    videoElement.controls = true;
+                                });
+
+                                // Request keyframe if not already done
+                                if (!keyframeRequested) {
+                                    // Request keyframe through RTCRtpSender
+                                    peerConnection.getSenders().forEach(sender => {
+                                        if (sender.track?.kind === 'video') {
+                                            sender.getParameters().encodings?.forEach(encoding => {
+                                                encoding.active = true;
+                                            });
+                                            const parameters = sender.getParameters();
+                                            sender.setParameters(parameters).catch(console.error);
+                                        }
+                                    });
+                                    keyframeRequested = true;
+                                }
+                            }
+                        }
+                    };
+
+                    // Enhanced connection state debugging
+                    peerConnection.onconnectionstatechange = () => {
+                        console.log('Connection state:', peerConnection.connectionState);
+                        if (peerConnection.connectionState === 'connected') {
+                            console.log('Video ready state:', videoElement.readyState);
+                            console.log('Video error:', videoElement.error);
+                            console.log('Video network state:', videoElement.networkState);
+                        }
+                    };
+
+                    peerConnection.oniceconnectionstatechange = () => {
+                        console.log('ICE Connection state:', peerConnection.iceConnectionState);
+                        if (peerConnection.iceConnectionState === 'failed') {
+                            console.error('ICE connection failed - restarting');
+                            peerConnection.restartIce();
+                        }
+                    };
+
+                    console.log("Creating offer with transceiver:", transceiver);
+                    const offer = await peerConnection.createOffer({
+                        offerToReceiveVideo: true,
+                        offerToReceiveAudio: false
+                    });
+
+                    console.log("Setting local description:", offer);
+                    await peerConnection.setLocalDescription(offer);
+
+                    console.log("Sending offer to server");
+                    ws.send(JSON.stringify({
+                        type: 'offer',
+                        camera_id: cameraId,
+                        request_id: connectionId,
+                        offer: offer.sdp
+                    }));
+
+                    startButton.disabled = true;
+                    stopButton.disabled = false;
+
+                } catch (error) {
+                    console.error('WebRTC setup failed:', error);
+                    stopWebRTC();
+                    alert('Failed to start video stream');
+                }
 
             } catch (error) {
                 console.error('WebRTC setup failed:', error);
+                stopWebRTC();
                 alert('Failed to start video stream');
             }
         }
@@ -345,6 +464,70 @@
 
         // Connect WebSocket when page loads
         connectWebSocket();
+
+        // Add video element event handlers
+        document.getElementById('videoStream').addEventListener('loadedmetadata', () => {
+            console.log('Video metadata loaded');
+            // Start playing when metadata is loaded
+            document.getElementById('videoStream').play().catch(e => {
+                console.error('Failed to play video:', e);
+            });
+        });
+
+        document.getElementById('videoStream').addEventListener('error', (e) => {
+            console.error('Video error:', e);
+        });
+
+        // Add more video element debug handlers
+        document.getElementById('videoStream').addEventListener('playing', () => {
+            console.log('Video started playing');
+            console.log('Video dimensions:', videoElement.videoWidth, 'x', videoElement.videoHeight);
+            console.log('Video ready state:', videoElement.readyState);
+            console.log('Video source object:', videoElement.srcObject);
+            const stream = videoElement.srcObject;
+            if (stream) {
+                console.log('Stream tracks:', stream.getTracks().map(t => ({
+                    kind: t.kind,
+                    enabled: t.enabled,
+                    muted: t.muted,
+                    readyState: t.readyState
+                })));
+            }
+        });
+
+        document.getElementById('videoStream').addEventListener('stalled', () => {
+            console.log('Video playback stalled');
+        });
+
+        document.getElementById('videoStream').addEventListener('suspend', () => {
+            console.log('Video playback suspended');
+        });
+
+        // Add video element properties
+        const videoElement = document.getElementById('videoStream');
+        videoElement.playsInline = true;
+        videoElement.autoplay = true;
+        videoElement.muted = true;
+        videoElement.controls = true;
+        videoElement.style.width = '100%';
+        videoElement.style.height = 'auto';
+
+        // Add more detailed error logging
+        videoElement.addEventListener('error', (e) => {
+            console.error('Video error:', e.target.error);
+            console.error('Error details:', {
+                code: e.target.error.code,
+                message: e.target.error.message,
+                name: e.target.error.name
+            });
+        });
+
+        // Log when video actually starts playing
+        videoElement.addEventListener('playing', () => {
+            console.log('Video started playing');
+            console.log('Video dimensions:', videoElement.videoWidth, 'x', videoElement.videoHeight);
+            console.log('Video ready state:', videoElement.readyState);
+        });
     </script>
 </body>
 
