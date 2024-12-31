@@ -89,7 +89,7 @@ impl MediaService {
         info!(
             "Adding camera {} with pipeline {}",
             camera_config.id.clone(),
-            camera_config.pipeline_str
+            camera_config.url
         );
         let mut cameras = self.cameras.lock().await;
         let camera = Arc::new(Camera::new(camera_config.clone()).await?);

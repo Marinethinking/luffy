@@ -20,7 +20,7 @@ pub struct MediaConfig {
 pub struct CameraConfig {
     pub id: String,
     pub name: String,
-    pub pipeline_str: String,
+    pub url: String,
 }
 
 impl LoadConfig for MediaConfig {}

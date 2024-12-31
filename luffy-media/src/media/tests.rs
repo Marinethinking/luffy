@@ -22,7 +22,7 @@ async fn setup_test() -> Result<Camera> {
     let config = crate::config::CameraConfig {
         id: "test_camera".to_string(),
         name: "Test Camera".to_string(),
-        pipeline_str: "rtsp://127.0.0.1:8554/test".to_string(),
+        url: "rtsp://127.0.0.1:8554/test".to_string(),
     };
 
     // Create and return camera instance

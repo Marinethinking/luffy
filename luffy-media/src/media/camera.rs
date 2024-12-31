@@ -9,29 +9,30 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use tokio::sync::broadcast;
 use tokio::sync::Mutex;
-use tracing::debug;
+use tracing::{debug, error};
 use url::Url;
-use webrtc::api::media_engine::MediaEngine;
+use webrtc::api::APIBuilder;
+use webrtc::ice_transport::ice_connection_state::RTCIceConnectionState;
+use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
 use webrtc::peer_connection::RTCPeerConnection;
-
+use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 use webrtc::{
-    api::{interceptor_registry::register_default_interceptors, APIBuilder},
-    ice_transport::{ice_connection_state::RTCIceConnectionState, ice_server::RTCIceServer},
-    interceptor::registry::Registry,
+    api::media_engine::MediaEngine,
+    ice_transport::ice_server::RTCIceServer,
     media::Sample,
     peer_connection::{
-        configuration::RTCConfiguration, peer_connection_state::RTCPeerConnectionState,
-        sdp::session_description::RTCSessionDescription,
+        configuration::RTCConfiguration, sdp::session_description::RTCSessionDescription,
     },
     rtp_transceiver::rtp_codec::RTCRtpCodecCapability,
-    track::track_local::{track_local_static_sample::TrackLocalStaticSample, TrackLocal},
 };
 
 #[derive(Clone)]
 pub struct Camera {
     config: CameraConfig,
     pub running: Arc<AtomicBool>,
+    pub frame_sender: broadcast::Sender<Vec<u8>>,
     pub peer_connections: Arc<Mutex<HashMap<String, Arc<RTCPeerConnection>>>>,
 }
 
@@ -41,7 +42,6 @@ impl fmt::Debug for Camera {
             .field("config", &self.config)
             .field("running", &self.running)
             .field("peer_connections", &self.peer_connections)
-            // Skip rtsp_session as it doesn't implement Debug
             .finish()
     }
 }
@@ -52,9 +52,11 @@ impl Camera {
     }
 
     pub async fn new(config: CameraConfig) -> Result<Self> {
+        let (frame_sender, _) = broadcast::channel(30); // Buffer size of 30 frames
         Ok(Self {
             config,
             running: Arc::new(AtomicBool::new(false)),
+            frame_sender,
             peer_connections: Arc::new(Mutex::new(HashMap::new())),
         })
     }
@@ -64,7 +66,43 @@ impl Camera {
             return Ok(());
         }
 
-        // Just mark as running, actual streaming starts when peers connect
+        let mut session = Session::describe(
+            Url::parse(&self.config.url)?,
+            SessionOptions::default().user_agent("luffy-media".to_owned()),
+        )
+        .await?;
+
+        let video = session
+            .streams()
+            .iter()
+            .position(|s| s.media() == "video")
+            .ok_or_else(|| anyhow::anyhow!("No video track found"))?;
+        session.setup(video, SetupOptions::default()).await?;
+        let session = session.play(PlayOptions::default()).await?;
+
+        let mut frames = session.demuxed()?;
+
+        let sender = self.frame_sender.clone();
+        let running = self.running.clone();
+
+        // Single task reading from RTSP and broadcasting to all peers
+        tokio::spawn(async move {
+            while running.load(Ordering::SeqCst) {
+                match frames.next().await {
+                    Some(Ok(CodecItem::VideoFrame(frame))) => {
+                        if let Ok(data) = Self::convert_h264(frame) {
+                            let _ = sender.send(data); // Send raw frame data
+                        }
+                    }
+                    Some(Err(e)) => {
+                        error!("Error reading RTSP frame: {}", e);
+                        continue;
+                    }
+                    _ => continue,
+                }
+            }
+        });
+
         self.running.store(true, Ordering::SeqCst);
         Ok(())
     }
@@ -74,7 +112,6 @@ impl Camera {
         let mut data = frame.into_data();
         let mut i = 0;
         while i < data.len() - 3 {
-            // Replace each NAL's length with the Annex B start code b"\x00\x00\x00\x01".
             let len = u32::from_be_bytes([data[i], data[i + 1], data[i + 2], data[i + 3]]) as usize;
             data[i] = 0;
             data[i + 1] = 0;
@@ -93,33 +130,17 @@ impl Camera {
 
     pub async fn stop(&self) -> Result<()> {
         self.running.store(false, Ordering::SeqCst);
-
-        // Close all peer connections
         let mut peers = self.peer_connections.lock().await;
         for peer in peers.values() {
             if let Err(e) = peer.close().await {
-                tracing::error!("Error closing peer connection: {}", e);
+                error!("Error closing peer connection: {}", e);
             }
         }
         peers.clear();
-
         Ok(())
     }
 
     pub async fn add_peer(&self, peer_id: &str) -> Result<()> {
-        // Create WebRTC API with media engine
-        let mut media_engine = MediaEngine::default();
-        media_engine.register_default_codecs()?;
-
-        let mut registry = Registry::new();
-        registry = register_default_interceptors(registry, &mut media_engine)?;
-
-        let api = APIBuilder::new()
-            .with_media_engine(media_engine)
-            .with_interceptor_registry(registry)
-            .build();
-
-        // Create WebRTC peer connection
         let config = RTCConfiguration {
             ice_servers: vec![RTCIceServer {
                 urls: vec!["stun:stun.l.google.com:19302".to_owned()],
@@ -135,36 +156,31 @@ impl Camera {
                 .await?,
         );
 
-        // Store peer connection
         self.peer_connections
             .lock()
             .await
-            .insert(peer_id.to_string(), Arc::clone(&peer_connection));
+            .insert(peer_id.to_string(), peer_connection);
 
         Ok(())
     }
 
     pub async fn remove_peer(&self, peer_id: &str) -> Result<()> {
-        let mut peers = self.peer_connections.lock().await;
-        if let Some(peer) = peers.remove(peer_id) {
+        if let Some(peer) = self.peer_connections.lock().await.remove(peer_id) {
             if let Err(e) = peer.close().await {
-                tracing::error!("Error closing peer connection: {}", e);
+                error!("Error closing peer connection: {}", e);
             }
-            tracing::info!("Removed peer {}", peer_id);
+            debug!("Removed peer {}", peer_id);
         }
         Ok(())
     }
 
     pub async fn handle_offer(&self, request_id: String, offer: String) -> Result<()> {
-        // Check if we're running
         if !self.running.load(Ordering::SeqCst) {
-            return Err(anyhow::anyhow!("Camera is not running"));
+            bail!("Camera is not running");
         }
 
-        // Add peer first to create the peer connection
         self.add_peer(&request_id).await?;
 
-        // Get the peer connection
         let peer_connection = self
             .peer_connections
             .lock()
@@ -172,24 +188,6 @@ impl Camera {
             .get(&request_id)
             .ok_or_else(|| anyhow::anyhow!("Peer connection not found"))?
             .clone();
-
-        // Create RTSP session
-        let mut session = Session::describe(
-            Url::parse(&self.config.pipeline_str)?,
-            SessionOptions::default().user_agent("luffy-media".to_owned()),
-        )
-        .await?;
-
-        let video = session
-            .streams()
-            .iter()
-            .position(|s| s.media() == "video")
-            .ok_or_else(|| anyhow::anyhow!("No video track found"))?;
-        session.setup(video, SetupOptions::default()).await?;
-        let session = session.play(PlayOptions::default()).await?;
-
-        // Get frame stream
-        let mut frames = session.demuxed()?;
 
         // Create and add track
         let track = Arc::new(TrackLocalStaticSample::new(
@@ -206,23 +204,18 @@ impl Camera {
             "luffy-media".to_owned(),
         ));
 
-        let track_cloned = track.clone();
-        peer_connection.add_track(track).await?;
+        peer_connection.add_track(track.clone()).await?;
 
-        // Start streaming for this peer
+        let mut receiver = self.frame_sender.subscribe();
         let running = self.running.clone();
+
+        // Each peer gets its own receiver
         tokio::spawn(async move {
             while running.load(Ordering::SeqCst) {
-                match frames.next().await {
-                    Some(Ok(CodecItem::VideoFrame(frame))) => {
-                        let data = match Self::convert_h264(frame) {
-                            Ok(data) => data,
-                            Err(e) => {
-                                tracing::error!("Failed to convert H264 frame: {}", e);
-                                continue;
-                            }
-                        };
-                        if let Err(e) = track_cloned
+                match receiver.recv().await {
+                    Ok(data) => {
+                        // Directly receive frame data
+                        if let Err(e) = track
                             .write_sample(&Sample {
                                 data: data.into(),
                                 duration: std::time::Duration::from_secs(1),
@@ -230,12 +223,10 @@ impl Camera {
                             })
                             .await
                         {
-                            tracing::error!("Failed to send RTP packet: {}", e);
+                            error!("Failed to send RTP packet: {}", e);
                         }
                     }
-                    Some(Ok(_)) => (),
-                    Some(Err(e)) => tracing::error!("Error reading frame: {}", e),
-                    None => break,
+                    Err(e) => error!("Broadcast receive error: {}", e),
                 }
             }
         });
@@ -248,12 +239,6 @@ impl Camera {
             .set_local_description(answer.clone())
             .await?;
 
-        // Store peer connection
-        self.peer_connections
-            .lock()
-            .await
-            .insert(request_id.clone(), peer_connection);
-
         // Send answer
         let response = serde_json::json!({
             "type": "answer",
@@ -265,6 +250,47 @@ impl Camera {
         WS_SERVER
             .send_message(&request_id, &response.to_string())
             .await?;
+
+        // Handle peer connection state changes
+        let request_id_state = request_id.clone();
+        let camera_self = self.clone();
+        peer_connection.on_peer_connection_state_change(Box::new(
+            move |s: RTCPeerConnectionState| {
+                let request_id = request_id_state.clone();
+                let camera = camera_self.clone();
+                Box::pin(async move {
+                    match s {
+                        RTCPeerConnectionState::Failed | RTCPeerConnectionState::Closed => {
+                            if let Err(e) = camera.remove_peer(&request_id).await {
+                                error!("Error removing peer {}: {}", request_id, e);
+                            }
+                        }
+                        _ => (),
+                    }
+                })
+            },
+        ));
+
+        // Handle ICE connection state changes
+        let request_id_ice = request_id.clone();
+        let camera_self = self.clone();
+        peer_connection.on_ice_connection_state_change(Box::new(
+            move |s: RTCIceConnectionState| {
+                let request_id = request_id_ice.clone();
+                let camera = camera_self.clone();
+                Box::pin(async move {
+                    match s {
+                        RTCIceConnectionState::Disconnected | RTCIceConnectionState::Failed => {
+                            if let Err(e) = camera.remove_peer(&request_id).await {
+                                error!("Error removing peer {}: {}", request_id, e);
+                            }
+                        }
+                        _ => (),
+                    }
+                })
+            },
+        ));
+
         Ok(())
     }
 
@@ -274,10 +300,13 @@ impl Camera {
         candidate: String,
         sdp_mline_index: u32,
     ) -> Result<()> {
-        let peers = self.peer_connections.lock().await;
-        let peer = peers
+        let peer = self
+            .peer_connections
+            .lock()
+            .await
             .get(&request_id)
-            .ok_or_else(|| anyhow::anyhow!("Peer connection not found"))?;
+            .ok_or_else(|| anyhow::anyhow!("Peer connection not found"))?
+            .clone();
 
         peer.add_ice_candidate(webrtc::ice_transport::ice_candidate::RTCIceCandidateInit {
             candidate,
