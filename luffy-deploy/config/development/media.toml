@@ -9,13 +9,12 @@ websocket_port = 8081
 [[cameras]]
 id = "camera1"
 name = "Main Deck Camera"
-rtsp_url = "rtsp://192.168.20.198:8554/camera1"
- 
+pipeline_str = "avfvideosrc ! videoconvert ! x264enc tune=zerolatency ! h264parse ! rtph264pay config-interval=-1 ! application/x-rtp,media=video,encoding-name=H264,payload=96 ! tee name=videotee allow-not-linked=true ! queue ! fakesink"
 
 [[cameras]]
 id = "camera2"
 name = "Engine Room Camera"
-rtsp_url = "rtsp://192.168.20.198:8554/camera1"
- 
+pipeline_str = "rtspsrc location=rtsp://192.168.20.198:8554/camera1 name=src latency=0 ! rtph264depay ! h264parse ! rtph264pay config-interval=-1 ! tee name=videotee allow-not-linked=true ! queue ! fakesink"
+
  
 

@@ -1,226 +1,271 @@
-use anyhow::{Context, Result};
-use gstreamer::{self as gst, prelude::*};
-use gstreamer::{glib, MessageView};
-use gstreamer_sdp as gst_sdp;
-use gstreamer_webrtc::{self};
-
-use serde::Serialize;
+use crate::config::CameraConfig;
+use crate::ws::WS_SERVER;
+use anyhow::{bail, Result};
+use futures::StreamExt;
+use retina::client::{Demuxed, PlayOptions, Playing};
+use retina::client::{Session, SessionOptions, SetupOptions};
+use retina::codec::{CodecItem, VideoFrame};
+use std::collections::HashMap;
+use std::fmt;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{debug, error, info};
+use tracing::debug;
+use url::Url;
+use webrtc::api::media_engine::MediaEngine;
+use webrtc::peer_connection::RTCPeerConnection;
 
-use crate::media::service::WebRTCResponse;
+use webrtc::{
+    api::{interceptor_registry::register_default_interceptors, APIBuilder},
+    ice_transport::{ice_connection_state::RTCIceConnectionState, ice_server::RTCIceServer},
+    interceptor::registry::Registry,
+    media::Sample,
+    peer_connection::{
+        configuration::RTCConfiguration, peer_connection_state::RTCPeerConnectionState,
+        sdp::session_description::RTCSessionDescription,
+    },
+    rtp_transceiver::rtp_codec::RTCRtpCodecCapability,
+    track::track_local::{track_local_static_sample::TrackLocalStaticSample, TrackLocal},
+};
 
-use crate::ws::WS_SERVER;
-
-type WebRTCBin = gstreamer::Element;
-
-#[derive(Debug)]
-pub enum CameraError {
-    InitFailed(String),
-    PipelineError(String),
-    WebRTCError(String),
-}
-
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Camera {
-    id: String,
-    name: String,
-    rtsp_url: String,
-    pipeline: Arc<Mutex<Option<gst::Pipeline>>>,
-    _bus_watch: Arc<Mutex<Option<gst::bus::BusWatchGuard>>>,
+    config: CameraConfig,
+    pub running: Arc<AtomicBool>,
+    pub peer_connections: Arc<Mutex<HashMap<String, Arc<RTCPeerConnection>>>>,
 }
 
-#[derive(Debug, Serialize)]
-pub struct WebRTCIceCandidate {
-    pub request_id: String,
-    pub camera_id: String,
-    pub candidate: String,
-    pub sdp_mline_index: u32,
+impl fmt::Debug for Camera {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Camera")
+            .field("config", &self.config)
+            .field("running", &self.running)
+            .field("peer_connections", &self.peer_connections)
+            // Skip rtsp_session as it doesn't implement Debug
+            .finish()
+    }
 }
 
 impl Camera {
-    pub async fn new(config: crate::config::CameraConfig) -> Result<Self> {
-        gst::init().context("Failed to initialize GStreamer")?;
+    pub fn id(&self) -> &str {
+        &self.config.id
+    }
 
+    pub async fn new(config: CameraConfig) -> Result<Self> {
         Ok(Self {
-            id: config.id,
-            name: config.name,
-            rtsp_url: config.rtsp_url,
-            pipeline: Arc::new(Mutex::new(None)),
-            _bus_watch: Arc::new(Mutex::new(None)),
+            config,
+            running: Arc::new(AtomicBool::new(false)),
+            peer_connections: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
-    pub fn id(&self) -> &str {
-        &self.id
-    }
-
-    async fn create_pipeline(&self) -> Result<gst::Pipeline> {
-        let pipeline_str = format!(
-            "rtspsrc location={} name=src latency=0 ! \
-             rtph264depay ! \
-             h264parse ! \
-             rtph264pay config-interval=-1 ! \
-             tee name=videotee allow-not-linked=true ! \
-             queue ! \
-             fakesink",
-            self.rtsp_url
-        );
-
-        let pipeline = gst::parse::launch(&pipeline_str)
-            .context("Failed to create pipeline")?
-            .downcast::<gst::Pipeline>()
-            .map_err(|_| anyhow::anyhow!("Failed to downcast pipeline"))?;
-
-        self.setup_pipeline_monitoring(&pipeline).await?;
-
-        Ok(pipeline)
-    }
-
-    async fn create_webrtc_peer(&self, request_id: &str) -> Result<WebRTCBin> {
-        info!("Creating WebRTC peer for camera: {}", self.id);
-        let pipeline = self.pipeline.lock().await;
-        let pipeline = pipeline.as_ref().context("Pipeline not initialized")?;
-
-        // Create webrtcbin element
-        let webrtc = gst::ElementFactory::make("webrtcbin")
-            .property_from_str("bundle-policy", "max-bundle")
-            .property_from_str("stun-server", "stun://stun.l.google.com:19302")
-            .name(format!("webrtc-{}", request_id))
-            .build()
-            .context("Failed to create webrtcbin")?;
-
-        // Add webrtcbin to pipeline
-        pipeline.add(&webrtc)?;
-
-        // Get the tee element
-        let tee = pipeline
-            .by_name("videotee")
-            .context("Failed to get tee element")?;
-
-        // Request src pad from tee
-        let tee_src_pad = tee
-            .request_pad_simple("src_%u")
-            .context("Failed to get tee src pad")?;
-        info!("Created tee src pad: {}", tee_src_pad.name());
-
-        // Get the static sink pad from webrtcbin
-        let webrtc_sink_pad = webrtc
-            .static_pad("sink_0")
-            .or_else(|| webrtc.request_pad_simple("sink_%u"))
-            .context("Failed to get webrtc sink pad")?;
-        info!("Got webrtc sink pad: {}", webrtc_sink_pad.name());
-
-        // Link the pads
-        tee_src_pad
-            .link(&webrtc_sink_pad)
-            .context("Failed to link tee to webrtcbin")?;
-
-        // Sync states
-        webrtc.sync_state_with_parent()?;
-
-        Ok(webrtc)
-    }
-
     pub async fn start(&self) -> Result<()> {
-        let pipeline = self.create_pipeline().await?;
-        pipeline
-            .set_state(gst::State::Playing)
-            .context("Failed to set pipeline to Playing")?;
-        *self.pipeline.lock().await = Some(pipeline);
-        info!(camera_id = %self.id, "Camera started successfully");
+        if self.running.load(Ordering::SeqCst) {
+            return Ok(());
+        }
+
+        // Just mark as running, actual streaming starts when peers connect
+        self.running.store(true, Ordering::SeqCst);
         Ok(())
+    }
+
+    /// Converts from AVC representation to the Annex B representation expected by webrtc-rs.
+    fn convert_h264(frame: VideoFrame) -> Result<Vec<u8>> {
+        let mut data = frame.into_data();
+        let mut i = 0;
+        while i < data.len() - 3 {
+            // Replace each NAL's length with the Annex B start code b"\x00\x00\x00\x01".
+            let len = u32::from_be_bytes([data[i], data[i + 1], data[i + 2], data[i + 3]]) as usize;
+            data[i] = 0;
+            data[i + 1] = 0;
+            data[i + 2] = 0;
+            data[i + 3] = 1;
+            i += 4 + len;
+            if i > data.len() {
+                bail!("partial NAL body");
+            }
+        }
+        if i < data.len() {
+            bail!("partial NAL length");
+        }
+        Ok(data)
     }
 
     pub async fn stop(&self) -> Result<()> {
-        // Stop main pipeline
-        if let Some(pipeline) = &*self.pipeline.lock().await {
-            pipeline
-                .set_state(gst::State::Null)
-                .context("Failed to set pipeline to Null")?;
+        self.running.store(false, Ordering::SeqCst);
+
+        // Close all peer connections
+        let mut peers = self.peer_connections.lock().await;
+        for peer in peers.values() {
+            if let Err(e) = peer.close().await {
+                tracing::error!("Error closing peer connection: {}", e);
+            }
+        }
+        peers.clear();
+
+        Ok(())
+    }
+
+    pub async fn add_peer(&self, peer_id: &str) -> Result<()> {
+        // Create WebRTC API with media engine
+        let mut media_engine = MediaEngine::default();
+        media_engine.register_default_codecs()?;
+
+        let mut registry = Registry::new();
+        registry = register_default_interceptors(registry, &mut media_engine)?;
+
+        let api = APIBuilder::new()
+            .with_media_engine(media_engine)
+            .with_interceptor_registry(registry)
+            .build();
+
+        // Create WebRTC peer connection
+        let config = RTCConfiguration {
+            ice_servers: vec![RTCIceServer {
+                urls: vec!["stun:stun.l.google.com:19302".to_owned()],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let peer_connection = Arc::new(
+            APIBuilder::new()
+                .build()
+                .new_peer_connection(config)
+                .await?,
+        );
+
+        // Store peer connection
+        self.peer_connections
+            .lock()
+            .await
+            .insert(peer_id.to_string(), Arc::clone(&peer_connection));
+
+        Ok(())
+    }
+
+    pub async fn remove_peer(&self, peer_id: &str) -> Result<()> {
+        let mut peers = self.peer_connections.lock().await;
+        if let Some(peer) = peers.remove(peer_id) {
+            if let Err(e) = peer.close().await {
+                tracing::error!("Error closing peer connection: {}", e);
+            }
+            tracing::info!("Removed peer {}", peer_id);
         }
         Ok(())
     }
 
-    pub async fn handler_offer(&self, request_id: String, offer: String) -> Result<()> {
-        info!("Handling offer for camera: {}", self.id);
-
-        // Check if pipeline exists, if not start it
-        if self.pipeline.lock().await.is_none() {
-            info!("Pipeline not initialized, starting camera");
-            self.start().await?;
+    pub async fn handle_offer(&self, request_id: String, offer: String) -> Result<()> {
+        // Check if we're running
+        if !self.running.load(Ordering::SeqCst) {
+            return Err(anyhow::anyhow!("Camera is not running"));
         }
 
-        let webrtc = self.create_webrtc_peer(&request_id).await?;
+        // Add peer first to create the peer connection
+        self.add_peer(&request_id).await?;
 
-        // Parse and set remote description (offer)
-        let sdp = gst_sdp::SDPMessage::parse_buffer(offer.as_bytes())
-            .context("Failed to parse SDP offer")?;
-        let offer = gstreamer_webrtc::WebRTCSessionDescription::new(
-            gstreamer_webrtc::WebRTCSDPType::Offer,
-            sdp,
-        );
+        // Get the peer connection
+        let peer_connection = self
+            .peer_connections
+            .lock()
+            .await
+            .get(&request_id)
+            .ok_or_else(|| anyhow::anyhow!("Peer connection not found"))?
+            .clone();
 
-        // Set remote description and wait for it to complete
-        let promise = gst::Promise::new();
-        webrtc.emit_by_name::<()>("set-remote-description", &[&offer, &promise]);
-        let reply = promise.wait();
-        match reply {
-            gst::PromiseResult::Replied => info!("Remote description set successfully"),
-            _ => anyhow::bail!("Failed to set remote description: {:?}", reply),
-        }
+        // Create RTSP session
+        let mut session = Session::describe(
+            Url::parse(&self.config.pipeline_str)?,
+            SessionOptions::default().user_agent("luffy-media".to_owned()),
+        )
+        .await?;
 
-        // Now create answer
-        let promise = gst::Promise::new();
-        webrtc.emit_by_name::<()>("create-answer", &[&None::<gst::Structure>, &promise]);
+        let video = session
+            .streams()
+            .iter()
+            .position(|s| s.media() == "video")
+            .ok_or_else(|| anyhow::anyhow!("No video track found"))?;
+        session.setup(video, SetupOptions::default()).await?;
+        let session = session.play(PlayOptions::default()).await?;
 
-        // Wait for answer and debug
-        let reply = promise.wait();
-        info!("Answer promise reply: {:?}", reply);
+        // Get frame stream
+        let mut frames = session.demuxed()?;
 
-        let answer = match reply {
-            gst::PromiseResult::Replied => {
-                let reply = promise.get_reply().unwrap();
-                info!("Promise reply: {:?}", reply);
+        // Create and add track
+        let track = Arc::new(TrackLocalStaticSample::new(
+            RTCRtpCodecCapability {
+                mime_type: "video/H264".to_owned(),
+                clock_rate: 90000,
+                channels: 0,
+                sdp_fmtp_line:
+                    "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f"
+                        .to_owned(),
+                ..Default::default()
+            },
+            "video".to_owned(),
+            "luffy-media".to_owned(),
+        ));
 
-                // Check for error in the reply
-                if let Ok(error) = reply.get::<glib::Error>("error") {
-                    anyhow::bail!("Error creating answer: {}", error);
-                }
+        let track_cloned = track.clone();
+        peer_connection.add_track(track).await?;
 
-                // Try to get the answer
-                match reply.get::<gstreamer_webrtc::WebRTCSessionDescription>("sdp") {
-                    Ok(desc) => desc.sdp().as_text().unwrap(),
-                    Err(_) => {
-                        info!("Available fields: {:?}", reply.fields());
-                        anyhow::bail!("Failed to get answer from promise reply")
+        // Start streaming for this peer
+        let running = self.running.clone();
+        tokio::spawn(async move {
+            while running.load(Ordering::SeqCst) {
+                match frames.next().await {
+                    Some(Ok(CodecItem::VideoFrame(frame))) => {
+                        let data = match Self::convert_h264(frame) {
+                            Ok(data) => data,
+                            Err(e) => {
+                                tracing::error!("Failed to convert H264 frame: {}", e);
+                                continue;
+                            }
+                        };
+                        if let Err(e) = track_cloned
+                            .write_sample(&Sample {
+                                data: data.into(),
+                                duration: std::time::Duration::from_secs(1),
+                                ..Default::default()
+                            })
+                            .await
+                        {
+                            tracing::error!("Failed to send RTP packet: {}", e);
+                        }
                     }
+                    Some(Ok(_)) => (),
+                    Some(Err(e)) => tracing::error!("Error reading frame: {}", e),
+                    None => break,
                 }
             }
-            _ => anyhow::bail!("Error creating answer: {:?}", reply),
-        };
+        });
 
-        // Set local description
-        let sdp = gst_sdp::SDPMessage::parse_buffer(answer.as_bytes())
-            .context("Failed to parse SDP answer")?;
-        let local_desc = gstreamer_webrtc::WebRTCSessionDescription::new(
-            gstreamer_webrtc::WebRTCSDPType::Answer,
-            sdp,
-        );
-        webrtc.emit_by_name::<()>(
-            "set-local-description",
-            &[&local_desc, &None::<gst::Promise>],
-        );
-        debug!("Answer: {:?}", answer);
-        let ws_msg = WebRTCResponse::Answer {
-            request_id: request_id.clone(),
-            camera_id: self.id.clone(),
-            answer,
-        };
-        WS_SERVER
-            .send_message(&request_id, &serde_json::to_string(&ws_msg).unwrap())
+        // Handle WebRTC setup
+        let offer = RTCSessionDescription::offer(offer)?;
+        peer_connection.set_remote_description(offer).await?;
+        let answer = peer_connection.create_answer(None).await?;
+        peer_connection
+            .set_local_description(answer.clone())
+            .await?;
+
+        // Store peer connection
+        self.peer_connections
+            .lock()
             .await
+            .insert(request_id.clone(), peer_connection);
+
+        // Send answer
+        let response = serde_json::json!({
+            "type": "answer",
+            "request_id": request_id,
+            "camera_id": self.id(),
+            "answer": answer.sdp,
+        });
+
+        WS_SERVER
+            .send_message(&request_id, &response.to_string())
+            .await?;
+        Ok(())
     }
 
     pub async fn add_ice_candidate(
@@ -229,58 +274,19 @@ impl Camera {
         candidate: String,
         sdp_mline_index: u32,
     ) -> Result<()> {
-        // Find webrtc element by name instead of using peers HashMap
-        if let Some(pipeline) = &*self.pipeline.lock().await {
-            if let Some(webrtc) = pipeline.by_name(&format!("webrtc-{}", request_id)) {
-                webrtc.emit_by_name::<()>(
-                    "add-ice-candidate",
-                    &[&sdp_mline_index, &None::<String>, &candidate],
-                );
-            }
-        }
-        Ok(())
-    }
+        let peers = self.peer_connections.lock().await;
+        let peer = peers
+            .get(&request_id)
+            .ok_or_else(|| anyhow::anyhow!("Peer connection not found"))?;
 
-    async fn setup_pipeline_monitoring(&self, pipeline: &gst::Pipeline) -> Result<()> {
-        let bus = pipeline.bus().context("Failed to get pipeline bus")?;
-
-        let mut bus_watch = self._bus_watch.lock().await;
-        *bus_watch = Some(bus.add_watch(move |_, msg| {
-            match msg.view() {
-                gst::MessageView::Error(err) => {
-                    error!(
-                        "Pipeline error: {} ({})",
-                        err.error(),
-                        err.debug().unwrap_or_default()
-                    );
-                }
-                gst::MessageView::StateChanged(state) => {
-                    if let Some(element) = state.src() {
-                        info!(
-                            "Element {:?} state changed: {:?}",
-                            element.name(),
-                            state.current()
-                        );
-                    }
-                }
-                gst::MessageView::Eos(_) => {
-                    debug!("End of stream");
-                }
-                _ => (),
-            }
-            glib::ControlFlow::Continue
-        })?);
+        peer.add_ice_candidate(webrtc::ice_transport::ice_candidate::RTCIceCandidateInit {
+            candidate,
+            sdp_mid: None,
+            sdp_mline_index: Some(sdp_mline_index as u16),
+            username_fragment: None,
+        })
+        .await?;
 
         Ok(())
-    }
-}
-
-impl Drop for Camera {
-    fn drop(&mut self) {
-        if let Ok(mut pipeline) = self.pipeline.try_lock() {
-            if let Some(p) = pipeline.take() {
-                let _ = p.set_state(gst::State::Null);
-            }
-        }
     }
 }

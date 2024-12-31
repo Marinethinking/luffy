@@ -2,7 +2,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
-use tokio::sync::{Mutex, MutexGuard};
+use tokio::sync::Mutex;
 use tracing::{error, info};
 
 use crate::config::CONFIG;
@@ -48,7 +48,7 @@ pub enum WebRTCResponse {
 
 #[derive(Debug)]
 pub struct MediaService {
-    cameras: Arc<Mutex<HashMap<String, Camera>>>,
+    cameras: Arc<Mutex<HashMap<String, Arc<Camera>>>>,
 }
 
 impl MediaService {
@@ -87,12 +87,13 @@ impl MediaService {
     // Camera management
     pub async fn add_camera(&self, camera_config: crate::config::CameraConfig) -> Result<()> {
         info!(
-            "Adding camera {} with URL {}",
+            "Adding camera {} with pipeline {}",
             camera_config.id.clone(),
-            camera_config.rtsp_url
+            camera_config.pipeline_str
         );
         let mut cameras = self.cameras.lock().await;
-        let camera = Camera::new(camera_config.clone()).await?;
+        let camera = Arc::new(Camera::new(camera_config.clone()).await?);
+        camera.start().await?;
         cameras.insert(camera_config.id.clone(), camera);
         Ok(())
     }
@@ -105,7 +106,7 @@ impl MediaService {
         Ok(())
     }
 
-    pub async fn get_camera(&self, id: &str) -> Option<Camera> {
+    pub async fn get_camera(&self, id: &str) -> Option<Arc<Camera>> {
         let cameras = self.cameras.lock().await;
         cameras.get(id).cloned()
     }
@@ -125,7 +126,7 @@ impl MediaService {
                 offer,
             } => {
                 if let Some(camera) = self.get_camera(&camera_id).await {
-                    camera.handler_offer(request_id, offer).await?;
+                    camera.handle_offer(request_id, offer).await?;
                 } else {
                     error!("Camera {} not found", camera_id);
                 }

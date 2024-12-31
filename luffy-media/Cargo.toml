@@ -21,8 +21,6 @@ tracing-subscriber.workspace = true
 tracing-appender.workspace = true
 uuid.workspace = true
 
-# GStreamer dependencies
-gstreamer = "0.23"
-gstreamer-webrtc = "0.23"
-gstreamer-sdp = "0.23"
-gstreamer-app = "0.23"
+retina= "0.4"
+webrtc= "0.12"
+url = "2.5"
