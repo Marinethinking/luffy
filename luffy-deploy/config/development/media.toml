@@ -10,12 +10,12 @@ websocket_port = 8081
 id = "camera1"
 name = "Main Deck Camera"
 # For testing, you might want to use a test stream like:
-url = "rtsp://localhost:8554/camera1"  # or another test RTSP stream
+url = "rtsp://192.168.20.198:8554/camera1"  # or another test RTSP stream
 
 [[cameras]]
 id = "camera2"
 name = "Engine Room Camera"
-url = "rtsp://localhost:8554/camera1"
+url = "rtsp://192.168.20.198:8554/camera1"
 
  
 
