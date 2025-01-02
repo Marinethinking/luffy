@@ -7,7 +7,7 @@ broker = true
 mavlink = true
 
 [mavlink]
-connection_string = "udpin:192.168.20.167:14559"
+connection_string = "udpin:192.168.20.153:14559"
 
 [ota]
 enable = true

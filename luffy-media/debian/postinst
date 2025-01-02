@@ -1,0 +1,70 @@
+#!/bin/sh
+set -e
+
+# Debug logging
+echo "postinst script called with argument: $1"
+
+# Create luffy user if it doesn't exist
+if ! getent passwd luffy >/dev/null; then
+    echo "Creating luffy user..."
+    useradd -r -s /bin/false luffy
+fi
+
+# Create /etc/luffy if it doesn't exist
+if [ ! -d "/etc/luffy" ]; then
+    echo "Creating /etc/luffy directory..."
+    mkdir -p /etc/luffy
+fi
+
+# Install base.toml only if it doesn't exist
+if [ ! -f "/etc/luffy/base.toml" ]; then
+    echo "Installing base.toml..."
+    cp /usr/share/luffy-media/base.toml /etc/luffy/base.toml
+fi
+
+# Set permissions only if directory exists
+if [ -d "/etc/luffy" ]; then
+    chown -R luffy:luffy /etc/luffy
+    chmod 644 /etc/luffy/*.toml
+fi
+
+# Create /var/log/luffy if it doesn't exist
+if [ ! -d "/var/log/luffy" ]; then
+    echo "Creating /var/log/luffy directory..."
+    mkdir -p /var/log/luffy
+    chown luffy:luffy /var/log/luffy
+    chmod 755 /var/log/luffy
+fi
+
+# Configure sudo permissions if not already configured
+if [ ! -f "/etc/sudoers.d/luffy" ]; then
+    echo "Configuring sudo permissions for luffy user..."
+    cat > /etc/sudoers.d/luffy << EOF
+luffy ALL=(ALL) NOPASSWD: /bin/systemctl start luffy-*.service
+luffy ALL=(ALL) NOPASSWD: /bin/systemctl stop luffy-*.service
+luffy ALL=(ALL) NOPASSWD: /bin/systemctl restart luffy-*.service
+EOF
+    chmod 440 /etc/sudoers.d/luffy
+fi
+
+# Reload systemd
+systemctl daemon-reload
+
+# Enable and start service if not already running
+if [ "$1" = "configure" ]; then
+    echo "Configuring service..."
+    
+    # First unmask the service if it's masked
+    systemctl unmask luffy-media.service || true
+    
+    # Then enable and start
+    if ! systemctl enable luffy-media.service; then
+        echo "Warning: Failed to enable service, but continuing..."
+    fi
+    
+    if ! systemctl start luffy-media.service; then
+        echo "Warning: Failed to start service, but continuing..."
+    fi
+fi
+
+#DEBHELPER#

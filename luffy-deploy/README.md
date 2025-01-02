@@ -8,6 +8,10 @@ cd luffy-deploy
 sudo sh ./scripts/build-deb.sh 
 # build for luffy-gateway
 sudo sh ./scripts/build-deb.sh luffy-gateway
+# build for luffy-media
+sudo sh ./scripts/build-deb.sh luffy-media
+# build for luffy-launcher
+sudo sh ./scripts/build-deb.sh luffy-launcher
 ```
 
 ## Install deb package

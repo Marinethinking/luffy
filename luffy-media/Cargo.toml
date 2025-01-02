@@ -24,3 +24,21 @@ uuid.workspace = true
 retina= "0.4"
 webrtc= "0.12"
 url = "2.5"
+
+[package.metadata.deb]
+maintainer = "Marine Thinking <liang.huang@marinethinking.com>"
+copyright = "2024, Marine Thinking <liang.huang@marinethinking.com>"
+depends = "$auto"
+section = "utility"
+priority = "optional"
+assets = [
+    ["target/release/luffy-media", "usr/bin/", "755"],
+    ["../luffy-deploy/config/development/media.toml", "etc/luffy/", "644"],
+    ["../luffy-deploy/config/development/base.toml",  "usr/share/luffy-media/base.toml", "644"],
+    ["../luffy-deploy/scripts/luffy-media.service", "lib/systemd/system/", "644"],
+]
+conf-files = [
+    "/etc/luffy/media.toml"
+]
+systemd-units = { unit-name = "luffy-media", enable = true, start = true }
+maintainer-scripts = "debian/"

@@ -2666,7 +2666,7 @@ dependencies = [
 
 [[package]]
 name = "luffy-common"
-version = "0.4.5"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "aws-config",
@@ -2696,7 +2696,7 @@ dependencies = [
 
 [[package]]
 name = "luffy-gateway"
-version = "0.4.5"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "askama",
@@ -2731,7 +2731,7 @@ dependencies = [
 
 [[package]]
 name = "luffy-launcher"
-version = "0.4.5"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "askama",
@@ -2761,7 +2761,7 @@ dependencies = [
 
 [[package]]
 name = "luffy-media"
-version = "0.4.5"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "async-trait",

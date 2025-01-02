@@ -9,12 +9,13 @@ A smart vehicle onboard program that provides network connectivity and web-based
 - **Telemetry**: Data publishing to both local and remote MQTT brokers
 - **Command**: Command subscription from upstream node to vehicle
 - **OTA**: Over-the-air update for the vehicle
+- **Media**: WebRTC server for video streaming
 
 ```
 luffy/
 ├── luffy-launcher/       # Main launcher/orchestrator
 ├── luffy-gateway/       # Communication services
-├── luffy-video/         # Video processing service
+├── luffy-media/         # Media services
 ├── luffy-common/        # Shared libraries
 └── luffy-deploy/        # Deployment configurations
 ```
@@ -69,10 +70,10 @@ Add to settings.json (Cmd/Ctrl + ,):
 
 If release CI failed, change ci script and re-release:
    ```bash
-   git tag -d v0.2.2  # delete old tag locally
-   git push origin :refs/tags/v0.2.2  # delete old tag remotely
-   git tag v0.2.2
-   git push origin v0.2.2
+   git tag -d v0.5.0  # delete old tag locally
+   git push origin :refs/tags/v0.5.0  # delete old tag remotely
+   git tag v0.5.0
+   git push origin v0.5.0
    ```
 
 ## Resources

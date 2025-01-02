@@ -2,7 +2,7 @@
 set -e
 
 # Default components list
-COMPONENTS="luffy-gateway luffy-launcher"
+COMPONENTS="luffy-gateway luffy-launcher luffy-media"
 
 # If a component is specified as an argument, only build that one
 if [ $# -eq 1 ]; then

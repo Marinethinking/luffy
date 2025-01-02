@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+
+# Stop and disable service
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+    systemctl stop luffy-media.service || true
+    systemctl disable luffy-media.service || true
+    systemctl daemon-reload
+fi
+
+#DEBHELPER#
