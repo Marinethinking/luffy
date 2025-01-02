@@ -173,7 +173,8 @@
                         <div class="system-time">System Time: <span id="systemTime"></span></div>
                     </div>
                     <div class="video-container">
-                        <video id="videoStream1" autoplay playsinline muted></video>
+                        <video id="videoStream1" autoplay playsinline muted webkit-playsinline
+                            x-webkit-airplay="allow"></video>
                     </div>
                     <div class="video-controls">
                         <button class="startStream" data-camera="camera1" data-video="videoStream1">Start
@@ -188,7 +189,8 @@
                         <div class="system-time">System Time: <span id="systemTime2"></span></div>
                     </div>
                     <div class="video-container">
-                        <video id="videoStream2" autoplay playsinline muted></video>
+                        <video id="videoStream2" autoplay playsinline muted webkit-playsinline
+                            x-webkit-airplay="allow"></video>
                     </div>
                     <div class="video-controls">
                         <button class="startStream" data-camera="camera2" data-video="videoStream2">Start
@@ -299,10 +301,18 @@
 
                 const configuration = {
                     iceServers: [
-                        { urls: 'stun:stun1.l.google.com:19302' },
-                        { urls: 'stun:stun2.l.google.com:19302' }
-                    ]
+                        { urls: 'stun:stun.l.google.com:19302' }
+                    ],
+                    sdpSemantics: 'unified-plan',
+                    iceTransportPolicy: 'all',
+                    bundlePolicy: 'max-bundle',
+                    rtcpMuxPolicy: 'require',
+                    enableMdns: false
                 };
+
+                if (!window.RTCPeerConnection) {
+                    window.RTCPeerConnection = window.webkitRTCPeerConnection || window.mozRTCPeerConnection;
+                }
 
                 const peerConnection = new RTCPeerConnection(configuration);
                 peerConnections[videoId] = peerConnection;
@@ -337,8 +347,20 @@
 
                 const offer = await peerConnection.createOffer({
                     offerToReceiveVideo: true,
-                    offerToReceiveAudio: false
+                    offerToReceiveAudio: false,
+                    iceRestart: true,
+                    voiceActivityDetection: false
                 });
+
+                const sdp = offer.sdp.split('\n').map(line => {
+                    if (line.startsWith('m=video')) {
+                        return line + '\r\na=ice-ufrag:' + Math.random().toString(36).substr(2, 8) +
+                            '\r\na=ice-pwd:' + Math.random().toString(36).substr(2, 24);
+                    }
+                    return line;
+                }).join('\n');
+
+                offer.sdp = sdp;
 
                 await peerConnection.setLocalDescription(offer);
 
@@ -351,6 +373,29 @@
 
                 startButton.disabled = true;
                 stopButton.disabled = false;
+
+                // Add codec preferences
+                const transceiver = peerConnection.addTransceiver('video', {
+                    direction: 'recvonly',
+                    streams: [],
+                    sendEncodings: [{
+                        // Safari prefers these parameters
+                        maxBitrate: 2500000,
+                        maxFramerate: 30
+                    }]
+                });
+
+                // Set codec preferences if supported
+                if (RTCRtpSender.getCapabilities) {
+                    const codecs = RTCRtpSender.getCapabilities('video').codecs;
+                    const h264Codecs = codecs.filter(codec =>
+                        codec.mimeType.toLowerCase() === 'video/h264' &&
+                        codec.sdpFmtpLine.includes('profile-level-id=42e01f')
+                    );
+                    if (h264Codecs.length > 0) {
+                        transceiver.setCodecPreferences(h264Codecs);
+                    }
+                }
 
             } catch (error) {
                 console.error('WebRTC setup failed:', error);

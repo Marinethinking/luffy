@@ -72,17 +72,6 @@ fn setup_prod_logging(log_level: &str, service_name: &str) -> bool {
         .with_line_number(true)
         .pretty();
 
-    // let all_log_appender = RollingFileAppender::new(
-    //     Rotation::DAILY,
-    //     log_dir,
-    //     format!("{}-all.log", service_name),
-    // );
-
-    // let error_log_appender = RollingFileAppender::new(
-    //     Rotation::DAILY,
-    //     log_dir,
-    //     format!("{}-error.log", service_name),
-    // );
 
     let all_log_appender = RollingFileAppender::builder()
         .rotation(Rotation::DAILY)

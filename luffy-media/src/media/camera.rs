@@ -2,7 +2,7 @@ use crate::config::CameraConfig;
 use crate::ws::WS_SERVER;
 use anyhow::{bail, Result};
 use futures::StreamExt;
-use retina::client::{Demuxed, PlayOptions, Playing};
+use retina::client::{Credentials, PlayOptions};
 use retina::client::{Session, SessionOptions, SetupOptions};
 use retina::codec::{CodecItem, VideoFrame};
 use std::collections::HashMap;
@@ -10,17 +10,16 @@ use std::collections::VecDeque;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tokio::sync::broadcast;
 use tokio::sync::Mutex;
 use tracing::{debug, error, info};
+use webrtc::peer_connection::policy::bundle_policy::RTCBundlePolicy;
+use webrtc::peer_connection::policy::ice_transport_policy::RTCIceTransportPolicy;
+use webrtc::peer_connection::policy::rtcp_mux_policy::RTCRtcpMuxPolicy;
 
 use webrtc::api::APIBuilder;
-use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 use webrtc::ice_transport::ice_connection_state::RTCIceConnectionState;
 use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
 use webrtc::peer_connection::RTCPeerConnection;
-use webrtc::rtp_transceiver::rtp_codec::{RTCRtpCodecParameters, RTPCodecType};
-use webrtc::rtp_transceiver::rtp_transceiver_direction::RTCRtpTransceiverDirection;
 use webrtc::rtp_transceiver::RTCPFeedback;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 use webrtc::track::track_local::TrackLocal;
@@ -33,8 +32,6 @@ use webrtc::{
     },
     rtp_transceiver::rtp_codec::RTCRtpCodecCapability,
 };
-
-use super::service::WebRTCRequest;
 
 #[derive(Clone)]
 pub struct Camera {
@@ -75,12 +72,22 @@ impl Camera {
 
         let camera_id = self.id().to_string();
         let url = self.config.url.clone();
+        let username = self.config.username.clone();
+        let password = self.config.password.clone();
         let running = self.running.clone();
         let video_tracks = self.video_tracks.clone();
 
         tokio::spawn(async move {
             while running.load(Ordering::SeqCst) {
-                match Self::setup_rtsp_stream(&camera_id, &url, video_tracks.clone()).await {
+                match Self::setup_rtsp_stream(
+                    &camera_id,
+                    &url,
+                    &username,
+                    &password,
+                    video_tracks.clone(),
+                )
+                .await
+                {
                     Ok(_) => {
                         while running.load(Ordering::SeqCst) {
                             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
@@ -168,20 +175,28 @@ impl Camera {
     async fn setup_rtsp_stream(
         camera_id: &str,
         url: &str,
+        username: &str,
+        password: &str,
         video_tracks: Arc<Mutex<Vec<Arc<TrackLocalStaticSample>>>>,
     ) -> Result<()> {
-        let mut session = Session::describe(url.parse()?, SessionOptions::default()).await?;
+        let mut options = SessionOptions::default();
+        if !username.is_empty() && !password.is_empty() {
+            let credentials = Credentials {
+                username: username.to_string(),
+                password: password.to_string(),
+            };
+            options = options.creds(Some(credentials));
+        }
+
+        let mut session = Session::describe(url.parse()?, options).await?;
         let video = session
             .streams()
             .iter()
             .position(|s| s.media() == "video")
             .ok_or_else(|| anyhow::anyhow!("No video track found"))?;
 
-        // Get H264 parameters from the stream
-        let stream = &session.streams()[video];
-        let extra_data = stream
-            .parameters()
-            .ok_or_else(|| anyhow::anyhow!("No H264 parameters found"))?;
+        // Don't rely on stream parameters, use default H264 parameters
+        let h264_params = "profile-level-id=42e01f;packetization-mode=1";
 
         session.setup(video, SetupOptions::default()).await?;
         let session = session.play(PlayOptions::default()).await?;
@@ -257,16 +272,14 @@ impl Camera {
             let api = APIBuilder::new().with_media_engine(media_engine).build();
 
             let config = RTCConfiguration {
-                ice_servers: vec![
-                    RTCIceServer {
-                        urls: vec!["stun:stun1.l.google.com:19302".to_owned()],
-                        ..Default::default()
-                    },
-                    RTCIceServer {
-                        urls: vec!["stun:stun2.l.google.com:19302".to_owned()],
-                        ..Default::default()
-                    },
-                ],
+                ice_servers: vec![RTCIceServer {
+                    urls: vec!["stun:stun.l.google.com:19302".to_owned()],
+                    ..Default::default()
+                }],
+                ice_candidate_pool_size: 10,
+                ice_transport_policy: RTCIceTransportPolicy::All,
+                bundle_policy: RTCBundlePolicy::MaxBundle,
+                rtcp_mux_policy: RTCRtcpMuxPolicy::Require,
                 ..Default::default()
             };
 
@@ -304,7 +317,7 @@ impl Camera {
                 ],
             },
             format!("video-{}", self.id()),
-            format!("webrtc-rs"),
+            format!("webrtc-rs-{}", self.id()),
         ));
 
         // Add track to peer connection first

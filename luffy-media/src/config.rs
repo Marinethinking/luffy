@@ -21,6 +21,8 @@ pub struct CameraConfig {
     pub id: String,
     pub name: String,
     pub url: String,
+    pub username: String,
+    pub password: String,
 }
 
 impl LoadConfig for MediaConfig {}

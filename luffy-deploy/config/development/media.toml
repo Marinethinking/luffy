@@ -11,11 +11,16 @@ id = "camera1"
 name = "Main Deck Camera"
 # For testing, you might want to use a test stream like:
 url = "rtsp://192.168.20.198:8554/camera1"  # or another test RTSP stream
+username = "admin"
+password = "mt000000"
 
 [[cameras]]
 id = "camera2"
 name = "Engine Room Camera"
 url = "rtsp://192.168.20.198:8554/camera1"
+username = "admin"
+password = "mt000000"
 
  
+
 

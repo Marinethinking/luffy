@@ -23,6 +23,8 @@ async fn setup_test() -> Result<Camera> {
         id: "test_camera".to_string(),
         name: "Test Camera".to_string(),
         url: "rtsp://127.0.0.1:8554/test".to_string(),
+        username: "admin".to_string(),
+        password: "mt000000".to_string(),
     };
 
     // Create and return camera instance
