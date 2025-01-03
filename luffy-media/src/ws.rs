@@ -10,7 +10,6 @@ use std::sync::Arc;
 use std::{collections::HashMap, sync::LazyLock};
 use tokio::sync::Mutex;
 use tracing::{debug, error, info};
-use uuid::Uuid;
 
 use crate::{config::CONFIG, media::service::MEDIA_SERVICE};
 

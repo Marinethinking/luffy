@@ -7,7 +7,6 @@ use std::fs;
 use tokio::sync::OnceCell;
 use tracing::info;
 
-use crate::config::BaseConfig;
 
 static AWS_CLIENT: OnceCell<AwsClient> = OnceCell::const_new();
 

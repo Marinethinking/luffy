@@ -8,9 +8,8 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::env;
-use tracing::{error, info};
+use tracing::info;
 
 use std::time::{Duration, SystemTime};
 
@@ -22,10 +21,6 @@ use crate::{monitor::mqtt::MQTT_MONITOR, ota::version::VersionManager};
 use luffy_common::util;
 
 use semver::Version;
-use std::collections::HashMap;
-use std::sync::LazyLock;
-use std::sync::{Arc, Mutex};
-use tokio::sync::oneshot;
 
 // View Models
 #[derive(Debug, Serialize)]

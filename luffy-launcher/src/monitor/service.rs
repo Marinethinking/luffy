@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
-use tracing::{debug, info};
+use tracing::info;
 
 #[derive(Default, Clone, Debug)]
 pub struct Services {

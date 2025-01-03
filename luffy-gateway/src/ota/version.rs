@@ -1,7 +1,7 @@
 use std::sync::{atomic::AtomicBool, Arc};
 
 use crate::config::CONFIG;
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use luffy_common::ota::deb::ServiceType;
 use luffy_common::ota::version::BaseVersionManager;
 use tracing::{info, warn};

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use tracing::{debug, error, info};
+use tracing::info;
 
 use crate::config::CONFIG;
 use crate::iot::local::LocalIotHandler;

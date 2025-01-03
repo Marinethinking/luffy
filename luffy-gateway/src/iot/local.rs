@@ -1,10 +1,8 @@
 use anyhow::Result;
-use rumqttc::QoS;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tokio::task::JoinHandle;
-use tokio::time::{sleep, Duration};
+use tokio::time::Duration;
 use tracing::{debug, error, info};
 
 use crate::config::CONFIG;
