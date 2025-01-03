@@ -9,7 +9,6 @@ use tokio::sync::Mutex;
 use tracing::{error, info};
 
 use crate::config::CONFIG;
-use crate::media::service::WebRTCRequest;
 use crate::media::service::MEDIA_SERVICE;
 
 pub static MQTT_HANDLER: LazyLock<MqttHandler> = LazyLock::new(MqttHandler::new);
@@ -72,10 +71,8 @@ impl MqttHandler {
 
     async fn handle_message(topic: String, payload: String) {
         if topic.contains("/webrtc/request/") {
-            if let Ok(request) = serde_json::from_str::<WebRTCRequest>(&payload) {
-                if let Err(e) = MEDIA_SERVICE.handle_webrtc_request(request).await {
-                    error!("Failed to handle WebRTC request: {}", e);
-                }
+            if let Err(e) = MEDIA_SERVICE.handle_webrtc_message("mqtt", &payload).await {
+                error!("Failed to handle WebRTC request: {}", e);
             }
         }
     }

@@ -39,7 +39,7 @@ pub struct Camera {
     pub running: Arc<AtomicBool>,
     pub peer_connections: Arc<Mutex<HashMap<String, Arc<RTCPeerConnection>>>>,
     pending_candidates: Arc<Mutex<HashMap<String, VecDeque<(String, u32)>>>>,
-    video_tracks: Arc<Mutex<Vec<Arc<TrackLocalStaticSample>>>>,
+    video_tracks: Arc<Mutex<HashMap<String, Arc<TrackLocalStaticSample>>>>,
 }
 
 impl fmt::Debug for Camera {
@@ -63,7 +63,7 @@ impl Camera {
             running: Arc::new(AtomicBool::new(false)),
             peer_connections: Arc::new(Mutex::new(HashMap::new())),
             pending_candidates: Arc::new(Mutex::new(HashMap::new())),
-            video_tracks: Arc::new(Mutex::new(Vec::new())),
+            video_tracks: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -177,7 +177,7 @@ impl Camera {
         url: &str,
         username: &str,
         password: &str,
-        video_tracks: Arc<Mutex<Vec<Arc<TrackLocalStaticSample>>>>,
+        video_tracks: Arc<Mutex<HashMap<String, Arc<TrackLocalStaticSample>>>>,
     ) -> Result<()> {
         let mut options = SessionOptions::default();
         if !username.is_empty() && !password.is_empty() {
@@ -194,9 +194,6 @@ impl Camera {
             .iter()
             .position(|s| s.media() == "video")
             .ok_or_else(|| anyhow::anyhow!("No video track found"))?;
-
-        // Don't rely on stream parameters, use default H264 parameters
-        let h264_params = "profile-level-id=42e01f;packetization-mode=1";
 
         session.setup(video, SetupOptions::default()).await?;
         let session = session.play(PlayOptions::default()).await?;
@@ -218,7 +215,7 @@ impl Camera {
                 prev_padding_packets: 0,
             };
 
-            for track in tracks.iter() {
+            for track in tracks.values() {
                 track.write_sample(&sample).await?;
             }
         }
@@ -238,10 +235,9 @@ impl Camera {
                         prev_padding_packets: 0,
                     };
 
-                    // Hold lock while writing to all tracks
                     let tracks = video_tracks.lock().await;
                     if !tracks.is_empty() {
-                        for track in tracks.iter() {
+                        for track in tracks.values() {
                             if let Err(e) = track.write_sample(&sample).await {
                                 error!("Failed to write sample: {}", e);
                             }
@@ -259,7 +255,11 @@ impl Camera {
     }
 
     pub async fn handle_offer(&self, request_id: String, offer: String) -> Result<()> {
-        info!("Handling offer for camera {}", self.id());
+        info!(
+            "Handling offer for camera {}, request_id: {}",
+            self.id(),
+            request_id
+        );
         if !self.running.load(Ordering::SeqCst) {
             bail!("Camera is not running");
         }
@@ -293,7 +293,7 @@ impl Camera {
             .insert(request_id.clone(), peer_connection.clone());
 
         // Create video track
-        let video_track = Arc::new(TrackLocalStaticSample::new(
+        let video_track: Arc<TrackLocalStaticSample> = Arc::new(TrackLocalStaticSample::new(
             RTCRtpCodecCapability {
                 mime_type: "video/H264".to_owned(),
                 clock_rate: 90000,
@@ -316,37 +316,64 @@ impl Camera {
                     },
                 ],
             },
-            format!("video-{}", self.id()),
+            format!("video-{}-{}", self.id(), request_id),
             format!("webrtc-rs-{}", self.id()),
         ));
 
-        // Add track to peer connection first
+        // Add track to peer connection
         peer_connection.add_track(video_track.clone()).await?;
 
-        // Add track to broadcast list
-        self.video_tracks.lock().await.push(video_track.clone());
+        // Add track to HashMap with peer_id as key
+        self.video_tracks
+            .lock()
+            .await
+            .insert(request_id.clone(), video_track);
 
         // Handle ICE connection state changes
+        let camera_self = self.clone();
         let request_id_clone = request_id.clone();
+
         peer_connection.on_ice_connection_state_change(Box::new(
             move |state: RTCIceConnectionState| {
                 debug!(
                     "ICE connection state changed for {}: {:?}",
                     request_id_clone, state
                 );
-                Box::pin(async {})
+
+                let camera = camera_self.clone();
+                let request_id = request_id_clone.clone();
+
+                Box::pin(async move {
+                    match state {
+                        RTCIceConnectionState::Disconnected
+                        | RTCIceConnectionState::Failed
+                        | RTCIceConnectionState::Closed => {
+                            camera.cleanup_peer(&request_id).await;
+                        }
+                        _ => {}
+                    }
+                })
             },
         ));
 
-        // Handle connection state changes
+        let camera_self = self.clone();
         let request_id_clone = request_id.clone();
         peer_connection.on_peer_connection_state_change(Box::new(
             move |state: RTCPeerConnectionState| {
-                debug!(
+                info!(
                     "Peer connection state changed for {}: {:?}",
                     request_id_clone, state
                 );
-                Box::pin(async {})
+                let camera = camera_self.clone();
+                let request_id = request_id_clone.clone();
+                Box::pin(async move {
+                    match state {
+                        RTCPeerConnectionState::Failed | RTCPeerConnectionState::Closed => {
+                            camera.cleanup_peer(&request_id).await;
+                        }
+                        _ => {}
+                    }
+                })
             },
         ));
 
@@ -385,6 +412,31 @@ impl Camera {
         WS_SERVER
             .send_message(&request_id, &response.to_string())
             .await?;
+
+        let request_id_clone = request_id.clone();
+        let camera_id = self.id().to_string();
+        peer_connection.on_ice_candidate(Box::new(move |c| {
+            let request_id = request_id_clone.clone();
+            let camera_id = camera_id.clone();
+            Box::pin(async move {
+                if let Some(candidate) = c {
+                    let message = serde_json::json!({
+                        "type": "candidate",
+                        "request_id": request_id,
+                        "camera_id": camera_id,
+                        "candidate": candidate.to_string(),
+                        "sdpMLineIndex": candidate.component,
+                    });
+
+                    if let Err(e) = WS_SERVER
+                        .send_message(&request_id, &message.to_string())
+                        .await
+                    {
+                        error!("Failed to send ICE candidate: {}", e);
+                    }
+                }
+            })
+        }));
 
         Ok(())
     }
@@ -451,5 +503,31 @@ impl Camera {
         peer.add_ice_candidate(candidate_init).await?;
         debug!("Successfully added ICE candidate");
         Ok(())
+    }
+
+    async fn cleanup_peer(&self, request_id: &str) {
+        info!("Starting cleanup for peer {}", request_id);
+
+        // Remove and close peer connection
+        let peer = {
+            let mut peers = self.peer_connections.lock().await;
+            peers.remove(request_id)
+        };
+
+        if let Some(peer) = peer {
+            if let Err(e) = peer.close().await {
+                error!("Error closing peer connection for {}: {}", request_id, e);
+            }
+        }
+
+        // Remove from pending candidates if present
+        self.pending_candidates.lock().await.remove(request_id);
+
+        // Remove the video track for this peer
+        if let Some(_track) = self.video_tracks.lock().await.remove(request_id) {
+            debug!("Removed video track for peer {}", request_id);
+        }
+
+        debug!("Cleanup completed for peer {}", request_id);
     }
 }

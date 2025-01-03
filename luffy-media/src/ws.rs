@@ -5,7 +5,6 @@ use axum::{
     Router,
 };
 use futures::{stream::SplitSink, SinkExt, StreamExt};
-use serde::Deserialize;
 
 use std::sync::Arc;
 use std::{collections::HashMap, sync::LazyLock};
@@ -13,9 +12,7 @@ use tokio::sync::Mutex;
 use tracing::{debug, error, info};
 use uuid::Uuid;
 
-use crate::config::CONFIG;
-use crate::media::service::WebRTCRequest;
-use crate::media::service::MEDIA_SERVICE;
+use crate::{config::CONFIG, media::service::MEDIA_SERVICE};
 
 pub static WS_SERVER: LazyLock<WebSocketServer> = LazyLock::new(|| WebSocketServer {
     connections: Arc::new(Mutex::new(HashMap::new())),
@@ -53,165 +50,77 @@ impl WebSocketServer {
 
     async fn handle_socket(&self, socket: WebSocket) {
         let (ws_sink, mut ws_stream) = socket.split();
-        let connection_id = Uuid::new_v4().to_string();
-        debug!("New WebSocket connection established: {}", connection_id);
+        debug!("New WebSocket connection established");
 
-        // Store connection
-        self.connections
-            .lock()
-            .await
-            .insert(connection_id.clone(), Arc::new(Mutex::new(ws_sink)));
-
-        // Send connection ID to client
-        if let Some(socket) = self.connections.lock().await.get(&connection_id) {
-            let init_message = serde_json::json!({
-                "type": "connection_id",
-                "connection_id": connection_id
-            });
-            if let Err(e) = socket
-                .lock()
-                .await
-                .send(Message::Text(init_message.to_string()))
-                .await
-            {
-                error!("Failed to send connection ID: {}", e);
-                return;
-            }
-        }
+        let ws_sink = Arc::new(Mutex::new(ws_sink));
 
         // Handle incoming messages
         while let Some(result) = ws_stream.next().await {
             match result {
                 Ok(msg) => {
-                    debug!("Received message from {}", connection_id);
                     match msg {
                         Message::Text(text) => {
-                            if let Err(e) = self.handle_message(&connection_id, &text).await {
-                                error!("Failed to handle message from {}: {}", connection_id, e);
+                            // Parse message to get request_id
+                            if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&text) {
+                                if let Some(request_id) =
+                                    msg.get("request_id").and_then(|v| v.as_str())
+                                {
+                                    info!("Received request_id: {}", request_id);
+
+                                    // Scope the lock to drop it before handle_message
+                                    {
+                                        let mut connections = self.connections.lock().await;
+                                        if !connections.contains_key(request_id) {
+                                            debug!(
+                                                "Storing new WebSocket connection for request_id: {}",
+                                                request_id
+                                            );
+                                            connections
+                                                .insert(request_id.to_string(), ws_sink.clone());
+                                        }
+                                    } // Lock is dropped here
+
+                                    if let Err(e) = self.handle_message(request_id, &text).await {
+                                        error!("Failed to handle message: {}", e);
+                                    }
+                                }
                             }
                         }
                         Message::Close(reason) => {
-                            debug!("Client {} requested close: {:?}", connection_id, reason);
+                            debug!("Client requested close: {:?}", reason);
                             break;
                         }
-                        _ => debug!(
-                            "Ignoring non-text message from {}: {:?}",
-                            connection_id, msg
-                        ),
+                        _ => debug!("Ignoring non-text message"),
                     }
                 }
                 Err(e) => {
-                    error!("WebSocket error for {}: {}", connection_id, e);
+                    error!("WebSocket error: {}", e);
                     break;
                 }
             }
         }
 
-        // Clean up connection
-        debug!("Closing WebSocket connection: {}", connection_id);
-        self.connections.lock().await.remove(&connection_id);
+        debug!("WebSocket connection closed");
     }
 
     pub async fn send_message(&self, request_id: &str, message: &str) -> Result<()> {
+        info!("Sending message to connection {}", request_id);
         if let Some(socket) = self.connections.lock().await.get(request_id) {
             debug!("Sending message to connection {}", request_id);
-            socket
+            return socket
                 .lock()
                 .await
                 .send(Message::Text(message.to_string()))
                 .await
-                .map_err(|e| anyhow::anyhow!("Failed to send message: {}", e))
-        } else {
-            error!("Connection {} not found", request_id);
-            Err(anyhow::anyhow!("Connection not found"))
+                .map_err(|e| anyhow::anyhow!("Failed to send message: {}", e));
         }
+        error!("Connection mapping not found for request {}", request_id);
+        Err(anyhow::anyhow!("Connection not found"))
     }
 
-    pub async fn handle_message(&self, connection_id: &str, message: &str) -> Result<()> {
-        debug!("Received message from connection {}", connection_id);
-
-        // Add debug logging to see the actual message
-        debug!("Message content: {}", message);
-
-        let msg: WebRtcMessage = match serde_json::from_str(message) {
-            Ok(msg) => msg,
-            Err(e) => {
-                error!("Failed to parse message: {}", e);
-                debug!("Failed message content: {}", message);
-                return Ok(());  // Ignore parsing errors
-            }
-        };
-
-        match msg {
-            WebRtcMessage::WebRTC {
-                message_type,
-                camera_id,
-                data,
-            } => {
-                let request = match (message_type.as_str(), data) {
-                    ("offer", WebRTCData::Offer { offer }) => WebRTCRequest::Offer {
-                        camera_id,
-                        request_id: connection_id.to_string(),
-                        offer,
-                    },
-                    ("candidate", WebRTCData::Candidate { 
-                        candidate, 
-                        sdp_mline_index,
-                        ..  // Ignore sdp_mid as it's optional
-                    }) => WebRTCRequest::Candidate {
-                        camera_id,
-                        request_id: connection_id.to_string(),
-                        candidate,
-                        sdp_mline_index,
-                    },
-                    _ => {
-                        debug!("Ignoring WebRTC message with type: {}", message_type);
-                        return Ok(());
-                    }
-                };
-
-                debug!("Processing WebRTC {}", message_type);
-                MEDIA_SERVICE.handle_webrtc_request(request).await?;
-            }
-            WebRtcMessage::ConnectionResponse { .. } => {
-                debug!("Ignoring connection response message");
-            }
-            WebRtcMessage::Other(_) => {
-                debug!("Ignoring non-WebRTC message");
-            }
-        }
-
-        Ok(())
+    pub async fn handle_message(&self, request_id: &str, message: &str) -> Result<()> {
+        MEDIA_SERVICE
+            .handle_webrtc_message(request_id, message)
+            .await
     }
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(untagged)]
-enum WebRtcMessage {
-    WebRTC {
-        #[serde(rename = "type")]
-        message_type: String,
-        camera_id: String,
-        #[serde(flatten)]
-        data: WebRTCData,
-    },
-    ConnectionResponse {
-        #[serde(rename = "type")]
-        message_type: String,
-        connection_id: String,
-    },
-    Other(serde_json::Value),
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(untagged)]
-enum WebRTCData {
-    Offer {
-        offer: String,
-    },
-    Candidate {
-        candidate: String,
-        sdp_mline_index: u32,
-        sdp_mid: Option<String>,
-    },
 }

@@ -1,9 +1,12 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
+
 use std::sync::{Arc, LazyLock};
 use tokio::sync::Mutex;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use crate::config::CONFIG;
 use crate::media::camera::Camera;
@@ -15,32 +18,27 @@ pub static MEDIA_SERVICE: LazyLock<Arc<MediaService>> = LazyLock::new(|| {
 });
 
 #[derive(Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
-pub enum WebRTCRequest {
-    Offer {
-        camera_id: String,
-        request_id: String,
-        offer: String,
-    },
-    Candidate {
-        request_id: String,
-        camera_id: String,
-        candidate: String,
-        sdp_mline_index: u32,
-    },
+pub struct WebRTCMessage {
+    #[serde(rename = "type")]
+    pub message_type: String,
+    pub camera_id: String,
+    pub offer: Option<String>,
+    pub candidate: Option<String>,
+    pub sdp_mline_index: Option<u32>,
+    pub sdp_mid: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum WebRTCResponse {
     Answer {
-        request_id: String,
         camera_id: String,
+        peer_id: String,
         answer: String,
     },
     Candidate {
-        request_id: String,
         camera_id: String,
+        peer_id: String,
         candidate: String,
         sdp_mline_index: u32,
     },
@@ -117,44 +115,46 @@ impl MediaService {
     }
 
     // WebRTC handling
-    pub async fn handle_webrtc_request(&self, request: WebRTCRequest) -> Result<()> {
-        info!("Received WebRTC request");
-        match request {
-            WebRTCRequest::Offer {
-                request_id,
-                camera_id,
-                offer,
-            } => {
-                if let Some(camera) = self.get_camera(&camera_id).await {
-                    camera.handle_offer(request_id, offer).await?;
-                } else {
-                    error!("Camera {} not found", camera_id);
-                }
-            }
-            WebRTCRequest::Candidate {
-                request_id,
-                camera_id,
-                candidate,
-                sdp_mline_index,
-            } => {
-                if let Some(camera) = self.get_camera(&camera_id).await {
-                    camera
-                        .add_ice_candidate(request_id, candidate, sdp_mline_index)
-                        .await?;
-                } else {
-                    error!("Camera {} not found", camera_id);
-                }
-            }
-        }
-        Ok(())
-    }
-}
+    pub async fn handle_webrtc_message(&self, connection_id: &str, message: &str) -> Result<()> {
+        info!("Handling WebRTC message, connection_id: {}", connection_id);
+        let msg: WebRTCMessage = serde_json::from_str(message).map_err(|e| {
+            error!("Failed to parse message: {}", e);
+            anyhow::anyhow!("Invalid message format")
+        })?;
 
-impl WebRTCRequest {
-    pub fn request_id(&self) -> &str {
-        match self {
-            WebRTCRequest::Offer { request_id, .. } => request_id,
-            WebRTCRequest::Candidate { request_id, .. } => request_id,
-        }
+        let connection_id = connection_id.to_string();
+        let action = match msg.message_type.as_str() {
+            "offer" => {
+                let offer = msg.offer.ok_or_else(|| anyhow::anyhow!("Missing offer"))?;
+                Box::pin(async move {
+                    let camera = MEDIA_SERVICE
+                        .get_camera(&msg.camera_id)
+                        .await
+                        .ok_or_else(|| anyhow::anyhow!("Camera not found"))?;
+                    camera.handle_offer(connection_id, offer).await
+                }) as Pin<Box<dyn Future<Output = Result<()>> + Send>>
+            }
+            "candidate" => {
+                let candidate = msg
+                    .candidate
+                    .ok_or_else(|| anyhow::anyhow!("Missing candidate"))?;
+                let sdp_mline_index = msg
+                    .sdp_mline_index
+                    .ok_or_else(|| anyhow::anyhow!("Missing sdp_mline_index"))?;
+                Box::pin(async move {
+                    let camera = MEDIA_SERVICE
+                        .get_camera(&msg.camera_id)
+                        .await
+                        .ok_or_else(|| anyhow::anyhow!("Camera not found"))?;
+                    camera
+                        .add_ice_candidate(connection_id, candidate, sdp_mline_index)
+                        .await
+                }) as Pin<Box<dyn Future<Output = Result<()>> + Send>>
+            }
+            _ => return Ok(()),
+        };
+
+        debug!("Processing WebRTC {}", msg.message_type);
+        action.await
     }
 }

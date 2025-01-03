@@ -205,7 +205,8 @@
     <script>
         let peerConnections = {};
         let ws = null;
-        let connectionId = null;
+        // Map to store request IDs for each video stream
+        let requestIds = {};
 
         function connectWebSocket() {
             const mediaServerUrl = `ws://${window.location.hostname}:8081/ws`;
@@ -213,10 +214,8 @@
 
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                if (data.type === 'connection_id') {
-                    connectionId = data.connection_id;
-                    console.log('Received connection ID:', connectionId);
-                } else if (data.type === 'answer') {
+                console.log('Received message:', data.type);
+                if (data.type === 'answer') {
                     handleWebRTCAnswer(data);
                 } else if (data.type === 'candidate') {
                     handleWebRTCCandidate(data);
@@ -247,8 +246,14 @@
         function handleWebRTCAnswer(data) {
             console.log("Received answer:", data);
             const videoId = `videoStream${data.camera_id.slice(-1)}`;
-            const peerConnection = peerConnections[videoId];
+            // Check if this answer is for our request
+            const expectedRequestId = requestIds[videoId];
+            if (!expectedRequestId || data.request_id !== expectedRequestId) {
+                console.log("Ignoring answer for different peer");
+                return;
+            }
 
+            const peerConnection = peerConnections[videoId];
             if (!peerConnection) {
                 console.error("No peer connection available for", videoId);
                 return;
@@ -268,9 +273,15 @@
         }
 
         function handleWebRTCCandidate(data) {
+            console.log("handleWebRTCCandidate....");
             const videoId = `videoStream${data.camera_id.slice(-1)}`;
+            if (data.request_id !== requestIds[videoId]) {
+                console.log("Ignoring candidate for different peer");
+                return;
+            }
+            console.log("handleWebRTCCandidate VideoId: ", videoId);
+            console.log("Received candidate, request_id:", data.request_id);
             const peerConnection = peerConnections[videoId];
-
             if (peerConnection) {
                 const candidate = new RTCIceCandidate({
                     candidate: data.candidate,
@@ -279,6 +290,7 @@
                 });
                 peerConnection.addIceCandidate(candidate)
                     .catch(console.error);
+                console.log("Added candidate to peer connection");
             }
         }
 
@@ -287,11 +299,11 @@
             const startButton = videoElement.parentElement.parentElement.querySelector('.startStream');
             const stopButton = videoElement.parentElement.parentElement.querySelector('.stopStream');
 
-            if (!connectionId) {
-                console.error('No connection ID available');
-                alert('WebSocket connection not ready');
-                return;
+            // Generate or get existing request ID for this video stream
+            if (!requestIds[videoId]) {
+                requestIds[videoId] = Math.random().toString(36).substring(2, 15);
             }
+            const requestId = requestIds[videoId];
 
             try {
                 if (peerConnections[videoId]) {
@@ -306,8 +318,7 @@
                     sdpSemantics: 'unified-plan',
                     iceTransportPolicy: 'all',
                     bundlePolicy: 'max-bundle',
-                    rtcpMuxPolicy: 'require',
-                    enableMdns: false
+                    rtcpMuxPolicy: 'require'
                 };
 
                 if (!window.RTCPeerConnection) {
@@ -317,13 +328,23 @@
                 const peerConnection = new RTCPeerConnection(configuration);
                 peerConnections[videoId] = peerConnection;
 
+                // Log connection state changes
+                peerConnection.onconnectionstatechange = () => {
+                    console.log(`Connection state for ${videoId}: ${peerConnection.connectionState}`);
+                    if (peerConnection.connectionState === 'disconnected' ||
+                        peerConnection.connectionState === 'failed' ||
+                        peerConnection.connectionState === 'closed') {
+                        stopWebRTC(videoId);
+                    }
+                };
+
                 peerConnection.onicecandidate = (event) => {
                     if (event.candidate) {
                         console.log('Generated ICE candidate:', event.candidate);
                         const msg = {
                             type: 'candidate',
                             camera_id: cameraId,
-                            request_id: connectionId,
+                            request_id: requestId,
                             candidate: event.candidate.candidate,
                             sdp_mline_index: event.candidate.sdpMLineIndex
                         };
@@ -352,22 +373,14 @@
                     voiceActivityDetection: false
                 });
 
-                const sdp = offer.sdp.split('\n').map(line => {
-                    if (line.startsWith('m=video')) {
-                        return line + '\r\na=ice-ufrag:' + Math.random().toString(36).substr(2, 8) +
-                            '\r\na=ice-pwd:' + Math.random().toString(36).substr(2, 24);
-                    }
-                    return line;
-                }).join('\n');
-
-                offer.sdp = sdp;
-
                 await peerConnection.setLocalDescription(offer);
 
+                console.log("Sending requestId:", requestId);
+                console.log("Sending offer:", offer);
                 ws.send(JSON.stringify({
                     type: 'offer',
                     camera_id: cameraId,
-                    request_id: connectionId,
+                    request_id: requestId,
                     offer: offer.sdp
                 }));
 
@@ -405,6 +418,9 @@
         }
 
         function stopWebRTC(videoId) {
+            const cameraId = videoId === 'videoStream1' ? 'camera1' : 'camera2';
+            delete requestIds[videoId];
+
             if (peerConnections[videoId]) {
                 peerConnections[videoId].close();
                 delete peerConnections[videoId];
@@ -467,22 +483,31 @@
                 // Update services
                 const servicesContainer = document.querySelector('.services-status');
                 if (servicesContainer && data.services) {
-                    servicesContainer.innerHTML = data.services.map(service => `
-                        <div class="service-item">
-                            <label>${service.name}:</label>
-                            <span class="status-indicator ${service.status === 'Running' ? 'connected' : 'disconnected'}">
-                                ${service.status}
-                            </span>
-                            <span class="version-tag">v${service.version}</span>
-                            <span class="health-time">(Last report: ${service.last_health_report} ago)</span>
-                            ${service.update_available ? `
-                                <button class="update-button" data-service="${service.name}"
-                                    data-version="${service.available_version}">
-                                    Update to v${service.available_version}
-                                </button>
-                            ` : ''}
-                        </div>
-                    `).join('');
+                    servicesContainer.innerHTML = data.services.map(service => {
+                        const lastReport = service.last_health_report.split(' ').map(part => {
+                            if (part.match(/^\d+$/)) {
+                                return part.padStart(2, '0');
+                            }
+                            return part;
+                        }).join(' ');
+
+                        return `
+                            <div class="service-item">
+                                <label>${service.name}:</label>
+                                <span class="status-indicator ${service.status === 'Running' ? 'connected' : 'disconnected'}">
+                                    ${service.status}
+                                </span>
+                                <span class="version-tag">v${service.version}</span>
+                                <span class="health-time">(Last report: ${lastReport} ago)</span>
+                                ${service.update_available ? `
+                                    <button class="update-button" data-service="${service.name}"
+                                        data-version="${service.available_version}">
+                                        Update to v${service.available_version}
+                                    </button>
+                                ` : ''}
+                            </div>
+                        `;
+                    }).join('');
                 }
             } catch (error) {
                 console.error('Error updating UI:', error);

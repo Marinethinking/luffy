@@ -81,3 +81,12 @@ If release CI failed, change ci script and re-release:
 - [AWS SDK Examples](https://github.com/awsdocs/aws-doc-sdk-examples/tree/main/rustv1) 
 
 
+## Framework
+
+```mermaid
+graph TD
+    MQ[MqttBorker] <--> |mav|ARDU[Ardupilot] <--> C[CBox]
+    DA[OnboardAPP] <-->|mqtt| MQ 
+    CA[RemoteAPP] <-->|mqtt| MQ <--> |webrtc|ME[Camera]
+    C <-->|mqtt| MQ
+```
