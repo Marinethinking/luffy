@@ -273,24 +273,25 @@
         }
 
         function handleWebRTCCandidate(data) {
-            console.log("handleWebRTCCandidate....");
+            // Add debug logging to see the exact data received
+            console.log("Raw candidate data received:", JSON.stringify(data));
+
             const videoId = `videoStream${data.camera_id.slice(-1)}`;
             if (data.request_id !== requestIds[videoId]) {
                 console.log("Ignoring candidate for different peer");
                 return;
             }
-            console.log("handleWebRTCCandidate VideoId: ", videoId);
-            console.log("Received candidate, request_id:", data.request_id);
+
             const peerConnection = peerConnections[videoId];
             if (peerConnection) {
+                // Parse the message data explicitly
                 const candidate = new RTCIceCandidate({
                     candidate: data.candidate,
-                    sdpMLineIndex: data.sdp_mline_index,
-                    sdpMid: data.sdp_mid
+                    sdpMLineIndex: parseInt(data.sdpMLineIndex, 10),  // Explicitly parse as integer
+                    sdpMid: data.sdpMid || '0'
                 });
                 peerConnection.addIceCandidate(candidate)
-                    .catch(console.error);
-                console.log("Added candidate to peer connection");
+                    .catch(e => console.error("Failed to add ICE candidate:", e));
             }
         }
 

@@ -420,13 +420,16 @@ impl Camera {
             let camera_id = camera_id.clone();
             Box::pin(async move {
                 if let Some(candidate) = c {
+                    let candidate_json = candidate.to_json().unwrap();
                     let message = serde_json::json!({
                         "type": "candidate",
                         "request_id": request_id,
                         "camera_id": camera_id,
-                        "candidate": candidate.to_string(),
-                        "sdpMLineIndex": candidate.component,
+                        "candidate": candidate_json.candidate,
+                        "sdpMLineIndex": candidate_json.sdp_mline_index,
+                        "sdpMid": candidate_json.sdp_mid,
                     });
+                    info!("Sending ICE candidate: {}", message.to_string());
 
                     if let Err(e) = WS_SERVER
                         .send_message(&request_id, &message.to_string())
